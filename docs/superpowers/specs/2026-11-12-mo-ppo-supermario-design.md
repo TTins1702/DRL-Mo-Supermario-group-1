@@ -120,7 +120,7 @@ DRL-Mo-Supermario-group-1/
 
 ## 6. Thiết kế Kỹ thuật Chi tiết cho từng Phân hệ (Technical Specification)
 
-### 6.1. Phân hệ 1 (`src/env/`) — Tiền xử lý & Đa mục tiêu
+### 6.1. Phân hệ 1 (`src/env/`) — Tiền xử lý & Đa mục tiêu (Việt)
 1. **Không gian hành động Speedrun (`SpeedrunActionWrapper`):**
    - Thay thế `Discrete(256)` bằng `Discrete(7)` tối ưu cho tốc độ và vượt chướng ngại vật:
      - `0`: `['NOOP']`
@@ -138,7 +138,7 @@ DRL-Mo-Supermario-group-1/
    - **Co giãn thang đo (Component Scaling):** Nhân từng phần tử với hệ số co giãn cấu hình sẵn $\mathbf{s} = [0.05, 0.05, 0.08, 0.01, 0.02]$ để đưa cả 5 thành phần (`x_pos`, `time`, `death`, `coin`, `enemy`) về vùng giá trị xấp xỉ $[-2.0, +2.0]$, giúp mạng Critic hội tụ nhanh và ổn định.
    - **Milestone & Anti-Stuck Shaping (tùy chọn bật/tắt trong config):** Trên chiều 0 (`x_pos`), thưởng thêm $+\beta_{\text{milestone}}$ khi Mario vượt qua tọa độ $x_{\max}$ lớn nhất từ đầu episode, và phạt nhẹ $-\beta_{\text{stuck}}$ nếu sau $K_{\text{stuck}} = 60$ bước (tương đương 240 frames) mà $x_{\max}$ không tăng (tránh đứng im trước ống cống cao).
 
-### 6.2. Phân hệ 2 (`src/model/`) — Mạng IMPALA Residual CNN & 5D Rollout Buffer
+### 6.2. Phân hệ 2 (`src/model/`) — Mạng IMPALA Residual CNN & 5D Rollout Buffer (Sơn)
 1. **Kiến trúc mạng `ActorCriticResNet` (`src/model/impala_cnn.py`):**
    - **Đầu vào:** Tensor trạng thái $s_t \in \mathbb{R}^{B \times 4 \times 84 \times 84}$ (ép kiểu `float32 / 255.0`).
    - **Khối trích xuất đặc trưng (IMPALA-Lite Backbone):**
@@ -156,7 +156,7 @@ DRL-Mo-Supermario-group-1/
      $$\mathbf{R}_t = \hat{\mathbf{A}}_t + \mathbf{V}_\phi(s_t) \quad \in \mathbb{R}^{N \times 5}$$
      Trong đó $\gamma = 0.99$ (hoặc mảng $\boldsymbol{\gamma} \in \mathbb{R}^5$ nếu muốn hệ số chiết khấu riêng) và $\lambda = 0.95$.
 
-### 6.3. Phân hệ 3 (`src/agent/`) — Thuật toán MO-PPO & Hàm Mất Mát
+### 6.3. Phân hệ 3 (`src/agent/`) — Thuật toán MO-PPO & Hàm Mất Mát (Quang)
 1. **Chuẩn hóa Lợi thế từng chiều & Tổng hợp Trọng số (Per-Objective Advantage Normalization):**
    - Trên toàn bộ batch rollout $4096$ mẫu, mỗi chiều mục tiêu $i \in \{0, 1, 2, 3, 4\}$ được chuẩn hóa độc lập về trung bình $0$ và độ lệch chuẩn $1$:
      $$\tilde{A}_t^{(i)} = \frac{\hat{A}_t^{(i)} - \text{mean}(\hat{A}^{(i)})}{\text{std}(\hat{A}^{(i)}) + 10^{-8}}$$
@@ -173,7 +173,7 @@ DRL-Mo-Supermario-group-1/
      $$\mathcal{L}^{\text{TOTAL}} = \mathcal{L}^{\text{CLIP}}(\theta) + c_{\text{vf}} \mathcal{L}^{\text{VF}}(\phi) - c_{\text{ent}} \mathcal{L}^{\text{ENT}}(\theta)$$
      với $c_{\text{vf}} = 0.5$, $c_{\text{ent}} = 0.01$, cắt chuẩn gradient `max_grad_norm = 0.5`, và giảm tuyến tính tốc độ học `lr` từ $2.5 \times 10^{-4}$ về $1.0 \times 10^{-5}$.
 
-### 6.4. Phân hệ 4 (`src/utils/`, `train.py`, `evaluate.py`) — Vận hành Kaggle/Colab & Chấm điểm
+### 6.4. Phân hệ 4 (`src/utils/`, `train.py`, `evaluate.py`) — Vận hành Kaggle/Colab & Chấm điểm (Tín)
 1. **Quản lý Checkpoint thông minh (`CheckpointManager`):**
    - Tự động phát hiện môi trường chạy:
      - Nếu có `/content/drive/MyDrive`: lưu vào `/content/drive/MyDrive/DRL_Mario_Checkpoints/<exp_name>/`.
