@@ -64,14 +64,14 @@
        - Sai số TD (ký hiệu $d_t = \text{terminated}[t]$ và $c_t = \text{truncated}[t]$):
          $$\delta_t = r_t + \gamma (1 - d_t) V_t^{\text{next}} - V_t$$
        - Truy hồi lùi GAE:
-         $$A_t = \delta_t + \gamma \lambda (1 - d_t)(1 - c_t) A_ {t+1}$$
+         $$A_t = \delta_t + \gamma \lambda (1 - d_t)(1 - c_t) A_{t+1}$$
        - Mục tiêu của Critic:
          $$R_t = A_t + V_t$$
    - `tests/test_ppo.py`:
      - `clipped_policy_loss`:
-       $$L^{\text{CLIP}}(\theta) = -\operatorname{mean}\!\left(\min\!\left(r_t(\theta) A_t,\ \operatorname{clip}(r_t(\theta), 1-\epsilon, 1+\epsilon) A_t\right)\right)$$
-     - `value_loss`: tính $\operatorname{mean}((V_t - R_t)^2)$ (không có hệ số $1/2$); nếu `old_values` và `clip` khác `None` thì tính $V_t^{\text{clip}} = V_t^{\text{old}} + \operatorname{clamp}(V_t - V_t^{\text{old}}, -\epsilon, +\epsilon)$ và lấy:
-       $$L^{\text{VF}}(\theta) = \operatorname{mean}\!\left(\max\!\left((V_t - R_t)^2,\ (V_t^{\text{clip}} - R_t)^2\right)\right)$$
+       $$L^{\text{CLIP}}(\theta) = -\mathrm{mean}\left(\min\left(r_t(\theta) A_t,\ \mathrm{clip}(r_t(\theta), 1-\epsilon, 1+\epsilon) A_t\right)\right)$$
+     - `value_loss`: tính $\mathrm{mean}((V_t - R_t)^2)$ (không có hệ số $1/2$); nếu `old_values` và `clip` khác `None` thì tính $V_t^{\text{clip}} = V_t^{\text{old}} + \mathrm{clamp}(V_t - V_t^{\text{old}}, -\epsilon, +\epsilon)$ và lấy:
+       $$L^{\text{VF}}(\theta) = \mathrm{mean}\left(\max\left((V_t - R_t)^2,\ (V_t^{\text{clip}} - R_t)^2\right)\right)$$
      - `approx_kl_and_clipfrac`: `approx_kl = mean((exp(log_ratio) - 1) - log_ratio)`, `clipfrac = mean((|exp(log_ratio) - 1| > clip).float())`, trả về 2 số thực `float`.
      - `ppo_loss`: khi `cfg.norm_adv == True`, chuẩn hóa lợi thế trên mini-batch bằng **độ lệch chuẩn tổng thể** `adv.std(unbiased=False) + 1e-8` (giữ nguyên `returns` không đổi).
      - `ppo_update`: lặp `cfg.update_epochs` epoch, xáo trộn mẫu, chia thành `cfg.num_minibatches` mini-batch, cắt chuẩn gradient `cfg.max_grad_norm`, kiểm tra dừng sớm sau mỗi epoch nếu `cfg.target_kl is not None` và `epoch_mean_approx_kl > cfg.target_kl`, trả về `dict` trung bình các thống kê kèm `"minibatch_updates"`.

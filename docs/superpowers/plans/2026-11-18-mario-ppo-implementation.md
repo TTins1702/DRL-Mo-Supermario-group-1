@@ -1,63 +1,64 @@
-# Mario PPO Implementation Plan
+# Kế hoạch Triển khai Đồ án: Chinh phục Super Mario Bros bằng PPO (`mario_ppo`)
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Hướng dẫn thực hiện cho Nhóm 1 (Việt, Sơn, Quang, Tín):** Triển khai tuần tự theo từng đầu việc (Task) bên dưới bằng quy trình kiểm thử trước (TDD). Hoàn thành bước nào đánh dấu `- [x]` bước đó và kiểm tra toàn bộ `pytest` trước khi chuyển sang giai đoạn huấn luyện trên Colab/Kaggle.
 
-**Goal:** Implement the complete `mario_ppo` package (wrappers, Nature-CNN actor-critic, GAE, PPO update, training tricks, Colab/Kaggle configs, transfer learning, and report plotting scripts) to pass 100% of `pytest` suites and achieve $\ge 0.8$ `flag_rate` on levels `1-1` (25 pts), `1-4`/`4-1` (15 pts), and bonus level `7-1` (+10 pts) for the 4-member team (Việt, Sơn, Quang, Tín).
-
-**Architecture:** Build directly on the official `mario_ppo` starter repository. Implement `FrameSkip`, `GrayResize`, `ScalarizeReward`, plus training-only wrappers (`NoProgressTruncation`, `MarioRewardShaping`) wired inside `if not eval_mode:` in `mario_ppo/env.py`; a shared 3-conv Nature-CNN `ActorCritic` in `mario_ppo/model.py`; vectorized backward GAE and minibatch clipped PPO in `mario_ppo/ppo.py`; and cross-platform multiprocessing + `init_ckpt` transfer learning + Colab/Kaggle configs and report plotting tools.
-
-**Tech Stack:** Python $\ge 3.10$, PyTorch, Gymnasium (`mo-gymnasium==1.3.2`, `gym-super-mario-bros==7.4.0`, `nes-py==8.2.1`), OpenCV (`opencv-python-headless`), NumPy $< 2$, OmegaConf $\ge 2.3$, Matplotlib, Pytest.
-
-**Spec:** [2026-11-18-mario-ppo-official-design.md](../specs/2026-11-18-mario-ppo-official-design.md)
-
-## Global Constraints
-
-- Do NOT modify `mario_ppo/evaluate.py` or the `eval_mode=True` code path of `mario_ppo/env.py`.
-- All custom training tricks (`NoProgressTruncation`, `MarioRewardShaping`) MUST only be applied inside `if not eval_mode:` in `mario_ppo/env.py` and MUST be no-ops unless explicitly enabled via `env.*` config keys so `configs/default.yaml` behavior stays unchanged.
-- `ActorCritic` input is strictly preprocessed image tensors `(B, C, 84, 84)`; never read NES RAM, `x_pos`, or `info` as network inputs.
-- Preserve exact function and class signatures expected by `train.py`, `evaluate.py`, and `tests/test_*.py`.
-- Cross-platform support: `mario_ppo/train.py` must use `context="spawn"` on Windows (`sys.platform == "win32"`) and `"forkserver"` on Linux/Colab/Kaggle so `pytest` passes on both local Windows machines and cloud Linux runtimes.
-
-## Review Focus
-
-1. **`NoProgressTruncation` when episode terminates simultaneously:** When `terminated=True` on the exact step `stalled` reaches `max_steps`, `truncated` must remain `False` (`not terminated`) so `compute_gae` does not bootstrap a terminal death/flag state from `final_values`.
-2. **`MarioRewardShaping` vector reward immutability:** Modifying `reward[0]` for `flag_bonus` or `stuck_penalty` must copy `reward` as `np.float32` before mutating so underlying environment arrays are not corrupted, and must occur before `ScalarizeReward`.
-3. **`ActorCritic` custom `hidden_dim` via `cfg.model` kwargs:** `train.py` and `evaluate.py` instantiate `ActorCritic(n_actions, in_channels=..., **cfg.get("model", {}))`; `ActorCritic.__init__` must accept `hidden_dim=512` (and ignore/validate optional kwargs) while keeping initial policy probabilities within `0.05` of uniform `1 / n_actions`.
-4. **`compute_gae` truncation at rollout boundary `t = T - 1`:** When `truncated[T - 1, n] == 1`, `compute_gae` must bootstrap from `final_values[T - 1, n]` (the final observation of the truncated episode), NOT `last_value[n]` (which belongs to the newly reset episode under `AutoresetMode.SAME_STEP`).
-5. **Transfer learning `init_ckpt` vs `resume` in `train.py`:** When fine-tuning `4-1` or `7-1` from a `1-1` checkpoint via `init_ckpt`, `train.py` must load only `model.load_state_dict(ck["model"])` while keeping `global_step = 0` and a fresh Adam optimizer so the learning rate schedule starts at `algo.lr` instead of decaying from step 4,000,000.
+- **Mục tiêu:** Hoàn thiện trọn vẹn gói `mario_ppo` (các wrapper tiền xử lý & mẹo huấn luyện, mạng Actor-Critic Nature-CNN, GAE, vòng cập nhật PPO, hỗ trợ đa nền tảng Windows/Linux, học chuyển giao `init_ckpt`, bộ cấu hình Colab/Kaggle và script vẽ biểu đồ báo cáo) để vượt qua 100% bộ kiểm thử `pytest` và đạt tỉ lệ chạm cờ `flag_rate >= 0.8` ở các màn `1-1` (25đ), `1-4`/`4-1` (15đ) và màn thưởng ngoài danh sách `7-1` (+10đ).
+- **Kiến trúc tổng thể:** Phát triển trực tiếp trên kho mã khởi đầu `mario_ppo`. Cài đặt `FrameSkip`, `GrayResize`, `ScalarizeReward` cùng 2 wrapper mẹo huấn luyện (`NoProgressTruncation`, `MarioRewardShaping`) đặt trong nhánh `if not eval_mode:` của `mario_ppo/env.py`; xây dựng mạng chia sẻ thân CNN `ActorCritic` trong `mario_ppo/model.py`; cài đặt GAE (tách riêng `terminated` và `truncated`) và hàm mất mát cắt ngưỡng PPO trong `mario_ppo/ppo.py`; hoàn thiện hạ tầng chạy song song đa nền tảng, học chuyển giao `init_ckpt`, notebook Colab/Kaggle và công cụ vẽ biểu đồ báo cáo.
+- **Công nghệ sử dụng:** Python $\ge 3.10$, PyTorch, Gymnasium (`mo-gymnasium==1.3.2`, `gym-super-mario-bros==7.4.0`, `nes-py==8.2.1`), OpenCV (`opencv-python-headless`), NumPy $< 2$, OmegaConf $\ge 2.3$, Matplotlib, Pytest.
+- **Tài liệu thiết kế tham chiếu:** [2026-11-18-mario-ppo-official-design.md](../specs/2026-11-18-mario-ppo-official-design.md)
 
 ---
 
-## File Structure & Team Ownership Map
+## Ràng buộc Toàn dự án
 
-| Subsystem | Owner(s) | Files Modified / Created | Test File |
+- **Không sửa** `mario_ppo/evaluate.py` và nhánh `eval_mode=True` trong `mario_ppo/env.py`.
+- Toàn bộ mẹo huấn luyện (`NoProgressTruncation`, `MarioRewardShaping`) **chỉ được bật** bên trong khối `if not eval_mode:` của `mario_ppo/env.py` và mặc định không kích hoạt nếu không khai báo trong file cấu hình, đảm bảo `configs/default.yaml` giữ nguyên hành vi gốc.
+- Đầu vào của mạng `ActorCritic` **chỉ là tensor khung hình đã tiền xử lý** có shape `(B, C, 84, 84)`; tuyệt đối không đọc RAM, tọa độ `x_pos` hay `info` đưa vào mạng.
+- Giữ nguyên tên lớp, tên hàm và chữ ký tham số mà `train.py`, `evaluate.py` và bộ `tests/test_*.py` đang gọi.
+- Hỗ trợ đa nền tảng: `mario_ppo/train.py` tự động chọn `context="spawn"` trên Windows (`sys.platform == "win32"`) và `"forkserver"` trên Linux/Colab/Kaggle để bộ kiểm thử đầu-cuối chạy thông suốt trên mọi máy của 4 thành viên.
+
+---
+
+## Các Tình huống Biên cần Kiểm soát Đặc biệt
+
+1. **`NoProgressTruncation` khi lượt kết thúc thật ở đúng bước kẹt cuối:** Nếu ở bước thứ `max_steps` bị đứng im mà Mario đồng thời chết hoặc chạm cờ (`terminated=True`), biến `truncated` bắt buộc phải giữ nguyên là `False` (`not terminated`) để `compute_gae` không bootstrap nhầm trạng thái kết thúc từ `final_values`.
+2. **Tính bất biến của véc-tơ phần thưởng trong `MarioRewardShaping`:** Khi cộng `flag_bonus` hoặc `stuck_penalty` vào `reward[0]`, phải tạo bản sao `np.array(reward, dtype=np.float32, copy=True)` trước khi sửa để không làm sai lệch dữ liệu gốc, và phải đặt wrapper này trước `ScalarizeReward`.
+3. **Truyền tham số `hidden_dim` tùy chỉnh từ `cfg.model` vào `ActorCritic`:** Do `train.py` và `evaluate.py` gọi `ActorCritic(n_actions, in_channels=..., **cfg.get("model", {}))`, hàm `__init__` cần hỗ trợ `hidden_dim=512` nhưng vẫn đảm bảo xác suất chính sách khởi tạo nằm trong sai số `< 0.05` quanh phân phối đều `1 / n_actions`.
+4. **Bootstrap tại biên đoạn thu `t = T - 1` trong `compute_gae`:** Khi `truncated[T - 1, n] == 1`, `compute_gae` phải bootstrap từ `final_values[T - 1, n]` (quan sát cuối của lượt vừa bị cắt), tuyệt đối không dùng `last_value[n]` (vì với `AutoresetMode.SAME_STEP`, `last_value` thuộc về lượt mới vừa reset).
+5. **Phân biệt `init_ckpt` (học chuyển giao) và `resume` (chạy tiếp) trong `train.py`:** Khi huấn luyện chuyển giao sang màn `4-1` hoặc `7-1` từ checkpoint `1-1` qua `init_ckpt`, `train.py` chỉ nạp trọng số mô hình `model.load_state_dict(ck["model"])`, giữ `global_step = 0` và khởi tạo bộ tối ưu Adam mới hoàn toàn để lịch giảm tốc độ học (`linear_schedule`) chạy đủ từ đầu.
+
+---
+
+## Sơ đồ Cấu trúc Tệp & Phân công Nhóm 4 Thành viên
+
+| Phân hệ | Thành viên phụ trách | Tệp chỉnh sửa / tạo mới | Bộ kiểm thử |
 |---|---|---|---|
-| **Phân hệ 1: Wrappers & Environment Tricks** | **Việt & Tín** | Modify: `mario_ppo/wrappers.py`, `mario_ppo/env.py` | `tests/test_wrappers.py` |
-| **Phân hệ 2: Actor-Critic Network** | **Sơn & Tín** | Modify: `mario_ppo/model.py` | `tests/test_model.py` |
-| **Phân hệ 3: GAE & PPO Core** | **Quang & Tín** | Modify: `mario_ppo/ppo.py` | `tests/test_gae.py`, `tests/test_ppo.py` |
-| **Phân hệ 4: Infra, Configs, Colab/Kaggle & Plotting** | **Tín (làm riêng)** | Modify: `mario_ppo/train.py`, `pyproject.toml`<br>Create: `configs/1-1.yaml`, `configs/1-4.yaml`, `configs/4-1.yaml`, `configs/7-1.yaml`, `configs/ablation_gamma099.yaml`, `configs/ablation_notricks.yaml`, `scripts/plot_report.py`, `notebooks/train_colab_kaggle.ipynb` | `tests/test_pipeline.py`, `tests/test_plot_report.py` |
+| **Phân hệ 1: Wrapper & Mẹo huấn luyện** | **Việt & Tín** | Chỉnh sửa: `mario_ppo/wrappers.py`, `mario_ppo/env.py` | `tests/test_wrappers.py` |
+| **Phân hệ 2: Mạng Actor-Critic** | **Sơn & Tín** | Chỉnh sửa: `mario_ppo/model.py` | `tests/test_model.py` |
+| **Phân hệ 3: GAE & Vòng cập nhật PPO** | **Quang & Tín** | Chỉnh sửa: `mario_ppo/ppo.py` | `tests/test_gae.py`, `tests/test_ppo.py` |
+| **Phân hệ 4: Hạ tầng Colab/Kaggle, Cấu hình & Biểu đồ** | **Tín (làm riêng)** | Chỉnh sửa: `mario_ppo/train.py`, `configs/default.yaml`<br>Tạo mới: `configs/1-1.yaml`, `configs/1-4.yaml`, `configs/4-1.yaml`, `configs/7-1.yaml`, `configs/ablation_gamma099.yaml`, `configs/ablation_notricks.yaml`, `scripts/plot_report.py`, `notebooks/train_colab_kaggle.ipynb` | `tests/test_pipeline.py`, `tests/test_plot_report.py` |
 
 ---
 
-### Task 1: Environment Wrappers & Training Tricks (Phân hệ 1 — Việt & Tín)
+### Task 1: Hoàn thiện Chuỗi Wrapper & Mẹo Huấn luyện (Phân hệ 1 — Việt & Tín)
 
-**Files:**
-- Modify: `mario_ppo/wrappers.py:122-179`
-- Modify: `mario_ppo/env.py:15-16,41-47`
-- Test: `tests/test_wrappers.py`
+**Tệp liên quan:**
+- Chỉnh sửa: `mario_ppo/wrappers.py:122-179`
+- Chỉnh sửa: `mario_ppo/env.py:15-16,41-47`
+- Kiểm thử: `tests/test_wrappers.py`
 
-**Interfaces:**
-- Consumes: `gym.Wrapper`, `gym.ObservationWrapper`, `cv2.cvtColor`, `cv2.resize`
-- Produces:
-  - `FrameSkip(env, skip=4)` -> `step(action) -> (obs: np.ndarray[uint8], total_reward: np.ndarray[float32], terminated: bool, truncated: bool, info: dict)`
-  - `GrayResize(env, size=84)` -> `observation(obs) -> np.ndarray[(size, size), uint8]`
-  - `ScalarizeReward(env, weights)` -> `step(action) -> (obs, reward: float, terminated, truncated, info)` with `info["vector_reward"]: np.ndarray[float32]`
-  - `NoProgressTruncation(env, max_steps=180)` -> sets `truncated = True` when `x_pos` does not exceed `self._max_x` for `max_steps` consecutive steps and `not terminated`
-  - `MarioRewardShaping(env, flag_bonus=0.0, stuck_penalty=0.0)` -> adds `flag_bonus` to `reward[0]` when `info.get("flag_get", False)` is `True`, and adds `stuck_penalty` to `reward[0]` when `reward[0] <= 0 and not terminated`
+**Giao diện đầu vào / đầu ra:**
+- Đầu vào: `gym.Wrapper`, `gym.ObservationWrapper`, `cv2.cvtColor`, `cv2.resize`
+- Đầu ra:
+  - `FrameSkip(env, skip=4)` $\rightarrow$ `step(action)` trả `(obs: np.ndarray[uint8], total_reward: np.ndarray[float32], terminated: bool, truncated: bool, info: dict)`
+  - `GrayResize(env, size=84)` $\rightarrow$ `observation(obs)` trả `np.ndarray[(size, size), uint8]`
+  - `ScalarizeReward(env, weights)` $\rightarrow$ `step(action)` trả `(obs, reward: float, terminated, truncated, info)` kèm `info["vector_reward"]: np.ndarray[float32]`
+  - `NoProgressTruncation(env, max_steps=180)` $\rightarrow$ đặt `truncated = True` khi `x_pos` không vượt `self._max_x` trong `max_steps` bước liên tiếp và `not terminated`
+  - `MarioRewardShaping(env, flag_bonus=0.0, stuck_penalty=0.0)` $\rightarrow$ cộng `flag_bonus` vào `reward[0]` khi `info.get("flag_get", False)` là `True`, và cộng `stuck_penalty` vào `reward[0]` khi `reward[0] <= 0 and not terminated`
 
-- [ ] **Step 1: Add Review Focus unit tests for `NoProgressTruncation` and `MarioRewardShaping` in `tests/test_wrappers.py`**
+- [ ] **Bước 1: Viết bài kiểm thử cho `NoProgressTruncation` và `MarioRewardShaping` trong `tests/test_wrappers.py`**
 
-Append to `tests/test_wrappers.py`:
+Thêm vào cuối tệp `tests/test_wrappers.py`:
 ```python
 from mario_ppo.wrappers import MarioRewardShaping, NoProgressTruncation
 
@@ -80,12 +81,12 @@ class _StuckMarioEnv(_FakeMarioEnv):
 def test_no_progress_truncation_cuts_stalled_episode_but_not_terminal():
     env = NoProgressTruncation(_StuckMarioEnv([10, 10, 10, 10]), max_steps=2)
     env.reset()
-    _, _, term1, trunc1, _ = env.step(0)  # x=10 (new max_x) -> stalled=0
+    _, _, term1, trunc1, _ = env.step(0)  # x=10 (max_x mới) -> stalled=0
     _, _, term2, trunc2, _ = env.step(0)  # x=10 -> stalled=1
-    _, _, term3, trunc3, _ = env.step(0)  # x=10 -> stalled=2 -> truncated!
+    _, _, term3, trunc3, _ = env.step(0)  # x=10 -> stalled=2 -> bị cắt (truncated)
     assert not trunc1 and not trunc2 and trunc3 and not term3
 
-    # If episode terminates on the exact step stalled hits max_steps, truncated must stay False
+    # Nếu lượt kết thúc thật đúng lúc stalled chạm ngưỡng max_steps, truncated phải giữ là False
     env_term = NoProgressTruncation(_StuckMarioEnv([10, 10, 10], end_at=3), max_steps=2)
     env_term.reset()
     env_term.step(0)
@@ -97,33 +98,33 @@ def test_no_progress_truncation_cuts_stalled_episode_but_not_terminal():
 def test_mario_reward_shaping_modifies_x_component_before_scalarize():
     env = MarioRewardShaping(_StuckMarioEnv([0, 20], flag_at=2), flag_bonus=5.0, stuck_penalty=-0.25)
     env.reset()
-    _, r1, _, _, _ = env.step(0)  # x=0 -> reward[0] was 0.0 -> -0.25
-    _, r2, _, _, _ = env.step(0)  # flag_get=True -> reward[0] was 2.0 -> 2.0 + 5.0 = 7.0
+    _, r1, _, _, _ = env.step(0)  # x=0 -> reward[0] ban đầu 0.0 -> -0.25
+    _, r2, _, _, _ = env.step(0)  # flag_get=True -> reward[0] ban đầu 2.0 -> 2.0 + 5.0 = 7.0
     assert r1[0] == pytest.approx(-0.25)
     assert r2[0] == pytest.approx(7.0)
 ```
 
-- [ ] **Step 2: Run `pytest tests/test_wrappers.py` to verify tests fail**
+- [ ] **Bước 2: Chạy thử `pytest tests/test_wrappers.py` để xác nhận bài test báo lỗi trước khi cài đặt**
 
-Run: `pytest -q tests/test_wrappers.py`
-Expected: FAIL (`ImportError` or `NotImplementedError: TODO: FrameSkip.step`)
+Lệnh chạy: `pytest -q tests/test_wrappers.py`
+Kết quả kỳ vọng: FAIL (`ImportError` hoặc `NotImplementedError: TODO: FrameSkip.step`)
 
-- [ ] **Step 3: Implement `FrameSkip`, `GrayResize`, `ScalarizeReward`, `NoProgressTruncation`, and `MarioRewardShaping` in `mario_ppo/wrappers.py` and wire into `mario_ppo/env.py`**
+- [ ] **Bước 3: Cài đặt `FrameSkip`, `GrayResize`, `ScalarizeReward`, `NoProgressTruncation`, `MarioRewardShaping` trong `mario_ppo/wrappers.py` và nối vào `mario_ppo/env.py`**
 
-In `mario_ppo/wrappers.py`:
-- `FrameSkip.step(self, action)`: loop up to `self.skip` times calling `self.env.step(action)`, accumulate `total_reward` as `np.float32`, keep the last two observations (`prev_obs`, `last_obs`), break on `terminated or truncated`, and return `np.maximum(prev_obs, last_obs)` if $\ge 2$ steps ran else `last_obs`.
-- `GrayResize.__init__(self, env, size=84)`: set `self.observation_space = gym.spaces.Box(0, 255, (size, size), dtype=np.uint8)`.
-- `GrayResize.observation(self, obs)`: convert via `cv2.cvtColor(obs, cv2.COLOR_RGB2GRAY)` and resize via `cv2.resize(gray, (self.size, self.size), interpolation=cv2.INTER_AREA)`.
-- `ScalarizeReward.__init__(self, env, weights)`: determine expected length `n_obj = env.unwrapped.reward_space.shape[0]` if `getattr(env.unwrapped, "reward_space", None) is not None` else `5`; raise `ValueError` if `len(weights) != n_obj`; store `self.weights = np.asarray(weights, dtype=np.float32)`.
-- `ScalarizeReward.step(self, action)`: store `vec = np.asarray(reward, dtype=np.float32)` in `info["vector_reward"]` and return `float(np.dot(self.weights, vec))`.
-- Implement `NoProgressTruncation(env, max_steps=180)` and `MarioRewardShaping(env, flag_bonus=0.0, stuck_penalty=0.0)` at the bottom of `mario_ppo/wrappers.py` and wire them inside `if not eval_mode:` in `mario_ppo/env.py` before `RandomNoopStart`.
+Trong `mario_ppo/wrappers.py`:
+- `FrameSkip.step(self, action)`: lặp tối đa `self.skip` lần gọi `self.env.step(action)`, cộng dồn `total_reward` kiểu `np.float32`, lưu 2 khung hình gần nhất (`prev_obs`, `last_obs`), dừng sớm khi `terminated or truncated`, trả về `np.maximum(prev_obs, last_obs)` nếu chạy $\ge 2$ khung hoặc `last_obs` nếu chỉ chạy 1 khung.
+- `GrayResize.__init__(self, env, size=84)`: gán `self.observation_space = gym.spaces.Box(0, 255, (size, size), dtype=np.uint8)`.
+- `GrayResize.observation(self, obs)`: chuyển xám theo độ sáng bằng `cv2.cvtColor(obs, cv2.COLOR_RGB2GRAY)` và co giãn về `(self.size, self.size)` bằng `cv2.resize(..., interpolation=cv2.INTER_AREA)`.
+- `ScalarizeReward.__init__(self, env, weights)`: lấy số mục tiêu `n_obj = env.unwrapped.reward_space.shape[0]` nếu `getattr(env.unwrapped, "reward_space", None) is not None` else `5`; ném `ValueError` nếu `len(weights) != n_obj`; lưu `self.weights = np.asarray(weights, dtype=np.float32)`.
+- `ScalarizeReward.step(self, action)`: lưu `vec = np.asarray(reward, dtype=np.float32)` vào `info["vector_reward"]` và trả về `float(np.dot(self.weights, vec))`.
+- Bổ sung `NoProgressTruncation(env, max_steps=180)` và `MarioRewardShaping(env, flag_bonus=0.0, stuck_penalty=0.0)` ở cuối `mario_ppo/wrappers.py`, rồi bật có điều kiện bên trong khối `if not eval_mode:` của `make_env` trong `mario_ppo/env.py` (trước `RandomNoopStart`).
 
-- [ ] **Step 4: Run `pytest tests/test_wrappers.py` to verify all wrapper tests pass**
+- [ ] **Bước 4: Chạy lại `pytest tests/test_wrappers.py` để kiểm tra toàn bộ bài test đều qua**
 
-Run: `pytest -v tests/test_wrappers.py`
-Expected: PASS (9/9 passed)
+Lệnh chạy: `pytest -v tests/test_wrappers.py`
+Kết quả kỳ vọng: PASS (9/9 bài kiểm tra đạt)
 
-- [ ] **Step 5: Commit Task 1**
+- [ ] **Bước 5: Lưu thay đổi vào Git (Commit Task 1)**
 
 ```bash
 git add mario_ppo/wrappers.py mario_ppo/env.py tests/test_wrappers.py
@@ -132,21 +133,21 @@ git commit -m "feat(wrappers): implement FrameSkip, GrayResize, ScalarizeReward 
 
 ---
 
-### Task 2: Shared Nature-CNN `ActorCritic` Network (Phân hệ 2 — Sơn & Tín)
+### Task 2: Cài đặt Mạng `ActorCritic` Nature-CNN (Phân hệ 2 — Sơn & Tín)
 
-**Files:**
-- Modify: `mario_ppo/model.py:21-37`
-- Test: `tests/test_model.py`
+**Tệp liên quan:**
+- Chỉnh sửa: `mario_ppo/model.py:21-37`
+- Kiểm thử: `tests/test_model.py`
 
-**Interfaces:**
-- Consumes: `_init(layer, gain=np.sqrt(2))` in `mario_ppo/model.py`
-- Produces:
+**Giao diện đầu vào / đầu ra:**
+- Sử dụng sẵn: hàm `_init(layer, gain=np.sqrt(2))` trong `mario_ppo/model.py`
+- Cung cấp cho `train.py` & `evaluate.py`:
   - `ActorCritic(n_actions: int, in_channels: int = 4, hidden_dim: int = 512)`
-  - `ActorCritic.forward(obs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]` returning `(logits (B, n_actions) float32, value (B,) float32)`
+  - `ActorCritic.forward(obs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]` trả về `(logits (B, n_actions) float32, value (B,) float32)`
 
-- [ ] **Step 1: Add Review Focus test for custom `hidden_dim` and `float32` / `uint8` normalization in `tests/test_model.py`**
+- [ ] **Bước 1: Thêm bài kiểm thử `hidden_dim` tùy chỉnh vào `tests/test_model.py`**
 
-Append to `tests/test_model.py`:
+Thêm vào cuối tệp `tests/test_model.py`:
 ```python
 def test_custom_hidden_dim_and_uniform_init():
     model = ActorCritic(n_actions=7, in_channels=4, hidden_dim=256)
@@ -156,25 +157,25 @@ def test_custom_hidden_dim_and_uniform_init():
     assert float((probs - 1 / 7).abs().max()) < 0.05
 ```
 
-- [ ] **Step 2: Run `pytest tests/test_model.py` to verify tests fail**
+- [ ] **Bước 2: Chạy `pytest tests/test_model.py` để xác nhận bài test đang báo lỗi**
 
-Run: `pytest -q tests/test_model.py`
-Expected: FAIL (`NotImplementedError: TODO: ActorCritic.__init__`)
+Lệnh chạy: `pytest -q tests/test_model.py`
+Kết quả kỳ vọng: FAIL (`NotImplementedError: TODO: ActorCritic.__init__`)
 
-- [ ] **Step 3: Implement `ActorCritic.__init__` and `ActorCritic.forward` in `mario_ppo/model.py`**
+- [ ] **Bước 3: Cài đặt `ActorCritic.__init__` và `ActorCritic.forward` trong `mario_ppo/model.py`**
 
-In `mario_ppo/model.py`:
-- `self.trunk = nn.Sequential(_init(nn.Conv2d(in_channels, 32, 8, stride=4)), nn.ReLU(), _init(nn.Conv2d(32, 64, 4, stride=2)), nn.ReLU(), _init(nn.Conv2d(64, 64, 3, stride=1)), nn.ReLU(), nn.Flatten(), _init(nn.Linear(64 * 7 * 7, hidden_dim)), nn.ReLU())`
-- `self.policy = _init(nn.Linear(hidden_dim, n_actions), gain=0.01)`
-- `self.value = _init(nn.Linear(hidden_dim, 1), gain=1.0)`
-- In `forward(self, obs)`: compute `h = self.trunk(obs.to(dtype=torch.float32) / 255.0)` and return `self.policy(h), self.value(h).squeeze(-1)`.
+Trong `mario_ppo/model.py`:
+- Xây dựng `self.trunk = nn.Sequential(_init(nn.Conv2d(in_channels, 32, 8, stride=4)), nn.ReLU(), _init(nn.Conv2d(32, 64, 4, stride=2)), nn.ReLU(), _init(nn.Conv2d(64, 64, 3, stride=1)), nn.ReLU(), nn.Flatten(), _init(nn.Linear(64 * 7 * 7, hidden_dim)), nn.ReLU())`.
+- Đầu chính sách: `self.policy = _init(nn.Linear(hidden_dim, n_actions), gain=0.01)`.
+- Đầu giá trị: `self.value = _init(nn.Linear(hidden_dim, 1), gain=1.0)`.
+- Trong `forward(self, obs)`: chuẩn hóa `h = self.trunk(obs.to(dtype=torch.float32) / 255.0)` và trả về `self.policy(h), self.value(h).squeeze(-1)`.
 
-- [ ] **Step 4: Run `pytest tests/test_model.py` to verify all model tests pass**
+- [ ] **Bước 4: Chạy `pytest tests/test_model.py` để xác nhận mọi bài test đều qua**
 
-Run: `pytest -v tests/test_model.py`
-Expected: PASS (6/6 passed)
+Lệnh chạy: `pytest -v tests/test_model.py`
+Kết quả kỳ vọng: PASS (6/6 bài kiểm tra đạt)
 
-- [ ] **Step 5: Commit Task 2**
+- [ ] **Bước 5: Lưu thay đổi vào Git (Commit Task 2)**
 
 ```bash
 git add mario_ppo/model.py tests/test_model.py
@@ -183,14 +184,14 @@ git commit -m "feat(model): implement shared Nature-CNN ActorCritic with orthogo
 
 ---
 
-### Task 3: Generalized Advantage Estimation (GAE) & Clipped PPO Update (Phân hệ 3 — Quang & Tín)
+### Task 3: Cài đặt GAE & Vòng cập nhật PPO (Phân hệ 3 — Quang & Tín)
 
-**Files:**
-- Modify: `mario_ppo/ppo.py:8-90`
-- Test: `tests/test_gae.py`, `tests/test_ppo.py`
+**Tệp liên quan:**
+- Chỉnh sửa: `mario_ppo/ppo.py:8-90`
+- Kiểm thử: `tests/test_gae.py`, `tests/test_ppo.py`
 
-**Interfaces:**
-- Produces:
+**Giao diện đầu vào / đầu ra:**
+- Cung cấp các hàm cho `train.py`:
   - `compute_gae(rewards, values, terminated, truncated, final_values, last_value, gamma, lam) -> tuple[torch.Tensor, torch.Tensor]`
   - `clipped_policy_loss(ratio, advantages, clip) -> torch.Tensor`
   - `value_loss(values, returns, old_values=None, clip=None) -> torch.Tensor`
@@ -198,12 +199,12 @@ git commit -m "feat(model): implement shared Nature-CNN ActorCritic with orthogo
   - `ppo_loss(new_logp, entropy, values, batch, cfg) -> tuple[torch.Tensor, dict[str, float]]`
   - `ppo_update(model, optimizer, batch, cfg) -> dict[str, float | int]`
 
-- [ ] **Step 1: Add Review Focus test for multi-env mixed termination/truncation at rollout boundary in `tests/test_gae.py`**
+- [ ] **Bước 1: Thêm bài kiểm thử hỗn hợp cắt lượt và tiếp tục tại biên đoạn thu vào `tests/test_gae.py`**
 
-Append to `tests/test_gae.py`:
+Thêm vào cuối tệp `tests/test_gae.py`:
 ```python
 def test_mixed_boundary_truncated_vs_continuing_across_envs():
-    # Env 0 is truncated at t=1 (uses final_values[1, 0]=4.0); Env 1 continues at t=1 (uses last_value[1]=10.0)
+    # Môi trường 0 bị cắt ở t=1 (dùng final_values[1, 0]=4.0); môi trường 1 chạy tiếp (dùng last_value[1]=10.0)
     rewards = torch.tensor([[1.0, 1.0], [2.0, 2.0]])
     values = torch.tensor([[2.0, 2.0], [3.0, 3.0]])
     terminated = torch.zeros(2, 2)
@@ -211,37 +212,39 @@ def test_mixed_boundary_truncated_vs_continuing_across_envs():
     final_values = torch.tensor([[0.0, 0.0], [4.0, 999.0]])
     last_value = torch.tensor([123.0, 10.0])
     adv, ret = compute_gae(rewards, values, terminated, truncated, final_values, last_value, gamma=0.9, lam=0.8)
-    # Env 0 at t=1: 2 + 0.9 * 4 - 3 = 2.6; Env 1 at t=1: 2 + 0.9 * 10 - 3 = 8.0
+    # Env 0 tại t=1: 2 + 0.9 * 4 - 3 = 2.6; Env 1 tại t=1: 2 + 0.9 * 10 - 3 = 8.0
     assert adv[1, 0].item() == pytest.approx(2.6, abs=1e-5)
     assert adv[1, 1].item() == pytest.approx(8.0, abs=1e-5)
 ```
 
-- [ ] **Step 2: Run `pytest tests/test_gae.py tests/test_ppo.py` to verify tests fail**
+- [ ] **Bước 2: Chạy `pytest tests/test_gae.py tests/test_ppo.py` để xác nhận bài test báo lỗi**
 
-Run: `pytest -q tests/test_gae.py tests/test_ppo.py`
-Expected: FAIL (`NotImplementedError: TODO: compute_gae`)
+Lệnh chạy: `pytest -q tests/test_gae.py tests/test_ppo.py`
+Kết quả kỳ vọng: FAIL (`NotImplementedError: TODO: compute_gae`)
 
-- [ ] **Step 3: Implement `compute_gae`, `clipped_policy_loss`, `value_loss`, `approx_kl_and_clipfrac`, `ppo_loss`, and `ppo_update` in `mario_ppo/ppo.py`**
+- [ ] **Bước 3: Cài đặt 6 hàm cốt lõi trong `mario_ppo/ppo.py`**
 
-Follow the exact formulas in Spec Section 5.3:
-- In `compute_gae`: loop `for t in reversed(range(T)):`
+Thực hiện theo đúng công thức ở Mục 5.3 của tài liệu thiết kế:
+- Trong `compute_gae`: duyệt ngược `for t in reversed(range(T)):`
   - `next_val = last_value if t == T - 1 else values[t + 1]`
   - `next_val = torch.where(truncated[t] > 0.5, final_values[t], next_val)`
   - `non_terminal = 1.0 - terminated[t]`
   - `continuing = non_terminal * (1.0 - truncated[t])`
   - `delta = rewards[t] + gamma * non_terminal * next_val - values[t]`
   - `gae = delta + gamma * lam * continuing * gae`
-  - `advantages[t] = gae`
-  - Return `advantages, advantages + values`.
-- In `ppo_loss`: when `cfg.norm_adv` is `True`, normalize `adv = (adv - adv.mean()) / (adv.std(unbiased=False) + 1e-8)`. Pass `clip = cfg.clip_coef if getattr(cfg, "clip_vloss", False) else None` to `value_loss`.
-- In `ppo_update`: shuffle indices with `torch.randperm(B, device=batch["obs"].device)` each epoch, split into `cfg.num_minibatches` slices, update parameters with `clip_grad_norm_(model.parameters(), cfg.max_grad_norm)`, and break out of the epoch loop if `cfg.target_kl is not None and epoch_kl_mean > cfg.target_kl`.
+  - Gán `advantages[t] = gae`, cuối cùng trả về `(advantages, advantages + values)`.
+- Trong `clipped_policy_loss`: tính `-torch.minimum(ratio * advantages, torch.clamp(ratio, 1.0 - clip, 1.0 + clip) * advantages).mean()`.
+- Trong `value_loss`: tính `(values - returns).pow(2).mean()`; nếu `old_values is not None and clip is not None`, tính `v_clip = old_values + torch.clamp(values - old_values, -clip, clip)` và trả về `torch.maximum((values - returns).pow(2), (v_clip - returns).pow(2)).mean()`.
+- Trong `approx_kl_and_clipfrac`: không tính gradient, trả về 2 giá trị `float`: `((ratio - 1.0) - log_ratio).mean().item()` và `((ratio - 1.0).abs() > clip).float().mean().item()`.
+- Trong `ppo_loss`: nếu `cfg.norm_adv` là `True`, chuẩn hóa lợi thế bằng `(adv - adv.mean()) / (adv.std(unbiased=False) + 1e-8)`. Truyền `clip = cfg.clip_coef if getattr(cfg, "clip_vloss", False) else None` vào `value_loss`.
+- Trong `ppo_update`: lặp `cfg.update_epochs` epoch, xáo trộn chỉ số bằng `torch.randperm(B, device=batch["obs"].device)`, chia thành `cfg.num_minibatches` mini-batch, cắt chuẩn gradient với `cfg.max_grad_norm`, và dừng sớm các epoch còn lại nếu `cfg.target_kl is not None and epoch_kl_mean > cfg.target_kl`.
 
-- [ ] **Step 4: Run `pytest tests/test_gae.py tests/test_ppo.py` to verify all GAE and PPO tests pass**
+- [ ] **Bước 4: Chạy `pytest tests/test_gae.py tests/test_ppo.py` để xác nhận tất cả bài test GAE & PPO đều qua**
 
-Run: `pytest -v tests/test_gae.py tests/test_ppo.py`
-Expected: PASS (19/19 passed)
+Lệnh chạy: `pytest -v tests/test_gae.py tests/test_ppo.py`
+Kết quả kỳ vọng: PASS (19/19 bài kiểm tra đạt)
 
-- [ ] **Step 5: Commit Task 3**
+- [ ] **Bước 5: Lưu thay đổi vào Git (Commit Task 3)**
 
 ```bash
 git add mario_ppo/ppo.py tests/test_gae.py tests/test_ppo.py
@@ -250,26 +253,26 @@ git commit -m "feat(ppo): implement GAE with truncation bootstrap and clipped PP
 
 ---
 
-### Task 4: Cross-Platform Training, Transfer Learning, Stage Configs & Report Tooling (Phân hệ 4 — Tín làm riêng)
+### Task 4: Hạ tầng Đa nền tảng, Học chuyển giao, Bộ cấu hình Colab/Kaggle & Vẽ biểu đồ Báo cáo (Phân hệ 4 — Tín làm riêng)
 
-**Files:**
-- Modify: `mario_ppo/train.py:27-34,88-96`
-- Modify: `configs/default.yaml` (keep defaults intact, add `init_ckpt: null` optional key)
-- Create: `configs/1-1.yaml`, `configs/1-4.yaml`, `configs/4-1.yaml`, `configs/7-1.yaml`, `configs/ablation_gamma099.yaml`, `configs/ablation_notricks.yaml`
-- Create: `scripts/plot_report.py`
-- Create: `notebooks/train_colab_kaggle.ipynb`
-- Test: `tests/test_pipeline.py`, `tests/test_plot_report.py`
+**Tệp liên quan:**
+- Chỉnh sửa: `mario_ppo/train.py:27-34,88-96`
+- Chỉnh sửa: `configs/default.yaml` (giữ nguyên mặc định, thêm khóa tùy chọn `init_ckpt: null`)
+- Tạo mới: `configs/1-1.yaml`, `configs/1-4.yaml`, `configs/4-1.yaml`, `configs/7-1.yaml`, `configs/ablation_gamma099.yaml`, `configs/ablation_notricks.yaml`
+- Tạo mới: `scripts/plot_report.py`
+- Tạo mới: `notebooks/train_colab_kaggle.ipynb`
+- Kiểm thử: `tests/test_pipeline.py`, `tests/test_plot_report.py`
 
-**Interfaces:**
-- Consumes: `mario_ppo.env.make_env`, `mario_ppo.model.ActorCritic`, `mario_ppo.ppo.compute_gae`, `mario_ppo.ppo.ppo_update`
-- Produces:
-  - Cross-platform `_make_vec_env` (`"spawn"` on Windows, `"forkserver"` on POSIX)
-  - Transfer learning key `init_ckpt` in `train(cfg)`: loads `ck["model"]` weights while keeping `global_step = 0` and fresh optimizer
-  - `scripts/plot_report.py`: CLI and callable functions `plot_learning_curves(progress_csv, out_path)`, `plot_ablation_comparison(run_dirs_a, run_dirs_b, label_a, label_b, out_path)`, `plot_failure_x_distribution(eval_jsons, level, out_path)`
+**Giao diện đầu vào / đầu ra:**
+- Sử dụng từ Task 1–3: `mario_ppo.env.make_env`, `mario_ppo.model.ActorCritic`, `mario_ppo.ppo.compute_gae`, `mario_ppo.ppo.ppo_update`
+- Cung cấp:
+  - `_make_vec_env` tương thích cả Windows (`"spawn"`) và Linux/Colab/Kaggle (`"forkserver"`)
+  - Khóa `init_ckpt` trong `train(cfg)`: chỉ nạp `ck["model"]`, giữ `global_step = 0` và `Adam` mới tinh để học chuyển giao từ `1-1` sang `4-1` hoặc `7-1`
+  - `scripts/plot_report.py`: các hàm `plot_learning_curves(progress_csv, out_path)`, `plot_ablation_comparison(csvs_a, csvs_b, label_a, label_b, out_path)`, `plot_failure_x_distribution(eval_jsons, level, out_path)` và giao diện dòng lệnh `main()`
 
-- [ ] **Step 1: Add Review Focus test for `init_ckpt` transfer learning in `tests/test_pipeline.py` and plotting test in `tests/test_plot_report.py`**
+- [ ] **Bước 1: Thêm bài kiểm thử học chuyển giao `init_ckpt` vào `tests/test_pipeline.py` và kiểm thử vẽ biểu đồ vào `tests/test_plot_report.py`**
 
-Append to `tests/test_pipeline.py`:
+Thêm vào cuối `tests/test_pipeline.py`:
 ```python
 def test_train_init_ckpt_loads_weights_at_step_zero(tmp_path):
     from mario_ppo.train import train
@@ -284,7 +287,7 @@ def test_train_init_ckpt_loads_weights_at_step_zero(tmp_path):
     assert ck2["global_step"] == 32
 ```
 
-Create `tests/test_plot_report.py`:
+Tạo tệp `tests/test_plot_report.py`:
 ```python
 import json
 from pathlib import Path
@@ -329,33 +332,36 @@ def test_plot_functions_create_image_files(tmp_path):
     assert out_fail.exists() and out_fail.stat().st_size > 0
 ```
 
-- [ ] **Step 2: Run `pytest tests/test_pipeline.py tests/test_plot_report.py` to verify failure**
+- [ ] **Bước 2: Chạy `pytest tests/test_plot_report.py` để xác nhận lỗi trước khi tạo script**
 
-Run: `pytest -q tests/test_plot_report.py`
-Expected: FAIL (`ModuleNotFoundError: No module named 'scripts'`)
+Lệnh chạy: `pytest -q tests/test_plot_report.py`
+Kết quả kỳ vọng: FAIL (`ModuleNotFoundError: No module named 'scripts'`)
 
-- [ ] **Step 3: Update `mario_ppo/train.py`, create `configs/*.yaml`, `scripts/plot_report.py`, and `notebooks/train_colab_kaggle.ipynb`**
+- [ ] **Bước 3: Cập nhật `mario_ppo/train.py`, tạo bộ cấu hình `configs/*.yaml`, `scripts/plot_report.py` và `notebooks/train_colab_kaggle.ipynb`**
 
-1. In `mario_ppo/train.py`:
-   - In `_make_vec_env`: use `ctx = "spawn" if sys.platform == "win32" else "forkserver"` and pass `context=ctx` to `AsyncVectorEnv`.
-   - After `global_step = 0`: if `cfg.get("init_ckpt") and not cfg.resume`, load `ck = torch.load(cfg.init_ckpt, map_location=device, weights_only=False)` and call `model.load_state_dict(ck["model"])`.
-2. In `configs/default.yaml`: add `init_ckpt: null` under `resume: null`.
-3. Create stage and ablation YAML files in `configs/`:
-   - `configs/1-1.yaml` (`level: "1-1"`, `num_envs: 8`, `num_steps: 512`, `total_steps: 4_000_000`, `gamma: 0.9`, `max_no_progress_steps: 180`, `flag_bonus: 5.0`)
-   - `configs/1-4.yaml` (`level: "1-4"`, `num_envs: 8`, `num_steps: 512`, `total_steps: 6_000_000`, `gamma: 0.95`, `max_no_progress_steps: 220`, `flag_bonus: 8.0`)
-   - `configs/4-1.yaml` (`level: "4-1"`, `num_envs: 8`, `num_steps: 512`, `total_steps: 6_000_000`, `gamma: 0.95`, `max_no_progress_steps: 180`, `flag_bonus: 6.0`)
-   - `configs/7-1.yaml` (`level: "7-1"`, `num_envs: 8`, `num_steps: 512`, `total_steps: 8_000_000`, `gamma: 0.95`, `max_no_progress_steps: 200`, `flag_bonus: 8.0`)
-   - `configs/ablation_gamma099.yaml` (identical to `configs/1-1.yaml` except `algo.gamma: 0.99`, `algo.total_steps: 3_000_000`)
-   - `configs/ablation_notricks.yaml` (identical to `configs/1-1.yaml` except `env.max_no_progress_steps: 0`, `env.flag_bonus: 0.0`, `algo.total_steps: 3_000_000`)
-4. Create `scripts/plot_report.py` using `csv`, `json`, `numpy`, and `matplotlib` (`Agg` backend) implementing `plot_learning_curves`, `plot_ablation_comparison`, `plot_failure_x_distribution`, and a CLI `main()`.
-5. Create `notebooks/train_colab_kaggle.ipynb` with ready-to-run cells for each of the 4 members (Việt: `1-1`, Sơn: `1-4`/`4-1`, Quang: Ablation 2 seeds, Tín: `7-1` + evaluation & report plots).
+1. Trong `mario_ppo/train.py`:
+   - Tại `_make_vec_env`: dùng `ctx = "spawn" if sys.platform == "win32" else "forkserver"` truyền vào `AsyncVectorEnv(..., context=ctx)`.
+   - Sau dòng `global_step = 0`: nếu `cfg.get("init_ckpt") and not cfg.resume`, nạp `ck = torch.load(cfg.init_ckpt, map_location=device, weights_only=False)` và gọi `model.load_state_dict(ck["model"])`.
+2. Trong `configs/default.yaml`: thêm `init_ckpt: null` ngay dưới `resume: null`.
+3. Tạo 6 tệp cấu hình trong `configs/` tối ưu cho Colab/Kaggle (`num_envs: 8`, `num_steps: 512`):
+   - `configs/1-1.yaml` (`level: "1-1"`, `total_steps: 4_000_000`, `gamma: 0.9`, `max_no_progress_steps: 180`, `flag_bonus: 5.0`)
+   - `configs/1-4.yaml` (`level: "1-4"`, `total_steps: 6_000_000`, `gamma: 0.95`, `max_no_progress_steps: 220`, `flag_bonus: 8.0`)
+   - `configs/4-1.yaml` (`level: "4-1"`, `total_steps: 6_000_000`, `gamma: 0.95`, `max_no_progress_steps: 180`, `flag_bonus: 6.0`)
+   - `configs/7-1.yaml` (`level: "7-1"`, `total_steps: 8_000_000`, `gamma: 0.95`, `max_no_progress_steps: 200`, `flag_bonus: 8.0`)
+   - `configs/ablation_gamma099.yaml` (giống `configs/1-1.yaml`, đổi `algo.gamma: 0.99`, `algo.total_steps: 3_000_000`)
+   - `configs/ablation_notricks.yaml` (giống `configs/1-1.yaml`, tắt `max_no_progress_steps: 0`, `flag_bonus: 0.0`, `algo.total_steps: 3_000_000`)
+4. Tạo `scripts/plot_report.py` sử dụng `matplotlib` (backend `Agg`) để vẽ 3 loại biểu đồ chuẩn báo cáo 300 DPI:
+   - 6 đường cong học theo `global_step` (`ep_return`, `x_pos`, `flag_rate`, `entropy`, `approx_kl`, `clipfrac`).
+   - Biểu đồ so sánh thí nghiệm đối chứng (trung bình $\pm$ độ lệch chuẩn qua 2 seed).
+   - Biểu đồ phân bố tọa độ $x$ kết thúc lượt để phân tích điểm chết.
+5. Tạo `notebooks/train_colab_kaggle.ipynb` với các cell sẵn sàng để 4 thành viên chạy song song trên Colab/Kaggle (tự động mount Google Drive, tự động `resume` checkpoint mới nhất nếu đứt phiên 12h, và tự động chạy `evaluate.py` xuất JSON + MP4).
 
-- [ ] **Step 4: Run the full `pytest` suite across the entire repository**
+- [ ] **Bước 4: Chạy toàn bộ bộ kiểm thử `pytest` trên toàn dự án**
 
-Run: `pytest -v`
-Expected: PASS (100% of tests in `test_wrappers.py`, `test_model.py`, `test_gae.py`, `test_ppo.py`, `test_pipeline.py`, `test_plot_report.py` pass)
+Lệnh chạy: `pytest -v`
+Kết quả kỳ vọng: PASS (100% bài kiểm tra trong `test_wrappers.py`, `test_model.py`, `test_gae.py`, `test_ppo.py`, `test_pipeline.py`, `test_plot_report.py` đều đạt)
 
-- [ ] **Step 5: Commit Task 4**
+- [ ] **Bước 5: Lưu thay đổi vào Git (Commit Task 4)**
 
 ```bash
 git add mario_ppo/train.py configs/ scripts/plot_report.py notebooks/train_colab_kaggle.ipynb tests/test_pipeline.py tests/test_plot_report.py
