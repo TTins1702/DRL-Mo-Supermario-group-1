@@ -51,3 +51,11 @@ def test_gradients_reach_every_parameter():
     (logits.logsumexp(-1).mean() + value.pow(2).mean()).backward()
     for name, p in model.named_parameters():
         assert p.grad is not None and torch.isfinite(p.grad).all(), name
+
+
+def test_custom_hidden_dim_and_uniform_init():
+    model = ActorCritic(n_actions=7, in_channels=4, hidden_dim=256)
+    logits, value = model(_obs(batch=8))
+    assert logits.shape == (8, 7) and value.shape == (8,)
+    probs = torch.softmax(logits, dim=-1)
+    assert float((probs - 1 / 7).abs().max()) < 0.05

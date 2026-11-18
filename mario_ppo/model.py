@@ -28,12 +28,25 @@ class ActorCritic(nn.Module):
       - forward: chuẩn hóa điểm ảnh uint8 về [0, 1], chạy thân, trả (logits, value) với value shape (B,).
     """
 
-    def __init__(self, n_actions, in_channels=4):
+    def __init__(self, n_actions, in_channels=4, hidden_dim=512):
         super().__init__()
-        raise NotImplementedError("TODO: ActorCritic.__init__ (thân CNN, self.policy, self.value)")
+        self.trunk = nn.Sequential(
+            _init(nn.Conv2d(in_channels, 32, kernel_size=8, stride=4)),
+            nn.ReLU(),
+            _init(nn.Conv2d(32, 64, kernel_size=4, stride=2)),
+            nn.ReLU(),
+            _init(nn.Conv2d(64, 64, kernel_size=3, stride=1)),
+            nn.ReLU(),
+            nn.Flatten(),
+            _init(nn.Linear(64 * 7 * 7, hidden_dim)),
+            nn.ReLU(),
+        )
+        self.policy = _init(nn.Linear(hidden_dim, n_actions), gain=0.01)
+        self.value = _init(nn.Linear(hidden_dim, 1), gain=1.0)
 
     def forward(self, obs):
-        raise NotImplementedError("TODO: ActorCritic.forward")
+        h = self.trunk(obs.to(dtype=torch.float32) / 255.0)
+        return self.policy(h), self.value(h).squeeze(-1)
 
     @torch.no_grad()
     def act(self, obs):
