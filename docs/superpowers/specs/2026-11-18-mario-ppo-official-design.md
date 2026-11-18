@@ -12,7 +12,7 @@
 
 Đồ án cuối kỳ học phần **Học tăng cường (Học kỳ 1, 2026–2027)** yêu cầu nhóm 4 sinh viên tự cài đặt các thành phần cốt lõi của thuật toán **PPO (Proximal Policy Optimization)** kiểu Actor–Critic trên kho mã khởi đầu `mario_ppo/`, huấn luyện tác tử chơi Super Mario Bros từ điểm ảnh thô, và đánh giá bằng giao thức cố định công khai (`--episodes 20 --seed 2026`).
 
-Để đạt **điểm tuyệt đối (110/100)** và đảm bảo cả 4 thành viên trả lời xuất sắc mọi câu hỏi vấn đáp độc lập của giảng viên, bản thiết kế này giải quyết trọn vẹn 6 hạng mục chấm điểm trong [de-bai.md](file:///d:/CN12_2024_2028/Nam_3/Reinforcement_Learning/exam/DRL-Mo-Supermario-group-1/de-bai.md) và [projectdetail.pdf](file:///d:/CN12_2024_2028/Nam_3/Reinforcement_Learning/exam/DRL-Mo-Supermario-group-1/docs/projectdetail.pdf):
+Để đạt **điểm tuyệt đối (110/100)** và đảm bảo cả 4 thành viên trả lời xuất sắc mọi câu hỏi vấn đáp độc lập của giảng viên, bản thiết kế này giải quyết trọn vẹn 6 hạng mục chấm điểm trong [de-bai.md](../../../de-bai.md) và [projectdetail.pdf](../../projectdetail.pdf):
 
 | Hạng mục | Điểm tối đa | Điều kiện đạt điểm tuyệt đối |
 |---|---|---|
@@ -60,13 +60,18 @@
      - `compute_gae(rewards, values, terminated, truncated, final_values, last_value, gamma, lam)` nhận các tensor `(T, N)` và `last_value` `(N,)`.
      - Nếu bước cuối `t = T - 1` có `terminated == 0` và `truncated == 0`, coi như bị cắt ngắn với giá trị bootstrap là `last_value`.
      - Tại mọi bước $t$:
-       - Giá trị kế tiếp: $V_{\text{next}, t} = \text{final\_values}_t$ nếu $\text{truncated}_t == 1$, ngược lại là $\text{values}_{t+1}$ (với $t = T - 1$ không bị cắt thì dùng `last_value`).
-       - Sai số TD: $\delta_t = r_t + \gamma (1 - \text{terminated}_t) V_{\text{next}, t} - V_t$.
-       - Truy hồi lùi: $A_t = \delta_t + \gamma \lambda (1 - \text{terminated}_t)(1 - \text{truncated}_t) A_{t+1}$.
-       - Mục tiêu của Critic: $R_t = A_t + V_t$.
+       - Giá trị kế tiếp $V_t^{\text{next}}$: lấy `final_values[t]` nếu `truncated[t] == 1`, ngược lại lấy `values[t + 1]` (riêng tại bước cuối `t = T - 1` nếu không bị cắt thì dùng `last_value`).
+       - Sai số TD (ký hiệu $d_t = \text{terminated}[t]$ và $c_t = \text{truncated}[t]$):
+         $$\delta_t = r_t + \gamma (1 - d_t) V_t^{\text{next}} - V_t$$
+       - Truy hồi lùi GAE:
+         $$A_t = \delta_t + \gamma \lambda (1 - d_t)(1 - c_t) A_ {t+1}$$
+       - Mục tiêu của Critic:
+         $$R_t = A_t + V_t$$
    - `tests/test_ppo.py`:
-     - `clipped_policy_loss`: $-\text{mean}(\min(r_t(\theta) A_t,\ \text{clip}(r_t(\theta), 1-\epsilon, 1+\epsilon) A_t))$.
-     - `value_loss`: $\text{mean}((V_\theta - R)^2)$ (không có hệ số $1/2$); nếu `old_values` và `clip` khác `None` thì tính $V_{\text{clip}} = V_{\text{old}} + \text{clamp}(V_\theta - V_{\text{old}}, -\text{clip}, +\text{clip})$ và lấy $\text{mean}(\max((V_\theta - R)^2, (V_{\text{clip}} - R)^2))$.
+     - `clipped_policy_loss`:
+       $$L^{\text{CLIP}}(\theta) = -\operatorname{mean}\!\left(\min\!\left(r_t(\theta) A_t,\ \operatorname{clip}(r_t(\theta), 1-\epsilon, 1+\epsilon) A_t\right)\right)$$
+     - `value_loss`: tính $\operatorname{mean}((V_t - R_t)^2)$ (không có hệ số $1/2$); nếu `old_values` và `clip` khác `None` thì tính $V_t^{\text{clip}} = V_t^{\text{old}} + \operatorname{clamp}(V_t - V_t^{\text{old}}, -\epsilon, +\epsilon)$ và lấy:
+       $$L^{\text{VF}}(\theta) = \operatorname{mean}\!\left(\max\!\left((V_t - R_t)^2,\ (V_t^{\text{clip}} - R_t)^2\right)\right)$$
      - `approx_kl_and_clipfrac`: `approx_kl = mean((exp(log_ratio) - 1) - log_ratio)`, `clipfrac = mean((|exp(log_ratio) - 1| > clip).float())`, trả về 2 số thực `float`.
      - `ppo_loss`: khi `cfg.norm_adv == True`, chuẩn hóa lợi thế trên mini-batch bằng **độ lệch chuẩn tổng thể** `adv.std(unbiased=False) + 1e-8` (giữ nguyên `returns` không đổi).
      - `ppo_update`: lặp `cfg.update_epochs` epoch, xáo trộn mẫu, chia thành `cfg.num_minibatches` mini-batch, cắt chuẩn gradient `cfg.max_grad_norm`, kiểm tra dừng sớm sau mỗi epoch nếu `cfg.target_kl is not None` và `epoch_mean_approx_kl > cfg.target_kl`, trả về `dict` trung bình các thống kê kèm `"minibatch_updates"`.
@@ -87,7 +92,7 @@
 
 ## 5. Thiết kế Kỹ thuật Chi tiết (Detailed Technical Design)
 
-### 5.1. Phân hệ 1: Chuỗi Wrapper & Mẹo Huấn luyện (`mario_ppo/wrappers.py`, `mario_ppo/env.py`) — **Phụ trách chính: Việt**
+### 5.1. Phân hệ 1: Chuỗi Wrapper & Mẹo Huấn luyện (`mario_ppo/wrappers.py`, `mario_ppo/env.py`) — **Phụ trách: Việt & Tín**
 
 1. **Ba Wrapper bắt buộc (chấm điểm tự động 6/30đ):**
    - **`FrameSkip(gym.Wrapper)`:**
@@ -132,7 +137,7 @@
 
 ---
 
-### 5.2. Phân hệ 2: Kiến trúc Mạng `ActorCritic` (`mario_ppo/model.py`) — **Phụ trách chính: Sơn**
+### 5.2. Phân hệ 2: Kiến trúc Mạng `ActorCritic` (`mario_ppo/model.py`) — **Phụ trách: Sơn & Tín**
 
 1. **Cấu trúc mạng CNN chia sẻ thân (Shared Nature-CNN Backbone):**
    - Đầu vào: Tensor `obs` có shape `(B, in_channels, 84, 84)` kiểu `uint8` (hoặc `float32`).
@@ -144,12 +149,12 @@
      - `Flatten()` $\rightarrow$ `(B, 3136)`
      - `Linear(3136, hidden_dim)` (mặc định `hidden_dim=512`) + `ReLU()`
    - Hai nhánh đầu ra tách biệt:
-     - **Actor (`self.policy`):** `_init(nn.Linear(hidden_dim, n_actions), gain=0.01)` $\rightarrow$ trả về `logits` shape `(B, n_actions)`. Giá trị `gain=0.01` đảm bảo xác suất ban đầu của mọi hành động xấp xỉ $1 / \text{n\_actions}$ với sai số $< 0.01 < 0.05$.
+     - **Actor (`self.policy`):** `_init(nn.Linear(hidden_dim, n_actions), gain=0.01)` $\rightarrow$ trả về `logits` shape `(B, n_actions)`. Giá trị `gain=0.01` đảm bảo xác suất ban đầu của mọi hành động xấp xỉ `1 / n_actions` với sai số $< 0.01 < 0.05$.
      - **Critic (`self.value`):** `_init(nn.Linear(hidden_dim, 1), gain=1.0)` $\rightarrow$ `squeeze(-1)` trả về `value` shape `(B,)`.
 
 ---
 
-### 5.3. Phân hệ 3: Toán học GAE & Vòng cập nhật PPO (`mario_ppo/ppo.py`) — **Phụ trách chính: Quang**
+### 5.3. Phân hệ 3: Toán học GAE & Vòng cập nhật PPO (`mario_ppo/ppo.py`) — **Phụ trách: Quang & Tín**
 
 1. **`compute_gae(rewards, values, terminated, truncated, final_values, last_value, gamma, lam)`:**
    - Kích thước: `T, N = rewards.shape`. Khởi tạo `advantages = torch.zeros_like(rewards)` và `gae = torch.zeros(N, dtype=rewards.dtype, device=rewards.device)`.
@@ -217,7 +222,7 @@
 
 ---
 
-### 5.4. Phân hệ 4: Vận hành Colab/Kaggle, Đánh giá & Tự động hóa Báo cáo (`configs/`, `scripts/`, `notebooks/`) — **Phụ trách chính: Tín**
+### 5.4. Phân hệ 4: Vận hành Colab/Kaggle, Đánh giá & Tự động hóa Báo cáo (`configs/`, `scripts/`, `notebooks/`) — **Phụ trách riêng: Tín**
 
 1. **Tương thích Đa nền tảng trong `mario_ppo/train.py`:**
    - Tại hàm `_make_vec_env` (dòng 33), cập nhật:
@@ -239,7 +244,7 @@
    - **Tùy chọn Khởi tạo Trọng số Học chuyển giao (`init_weights`):**
      - Trong `mario_ppo/train.py`, ngoài `cfg.resume` (khôi phục cả `global_step` và `optimizer` để chạy tiếp cùng 1 màn), hỗ trợ thêm khóa tùy chọn `cfg.get("init_ckpt")`: chỉ nạp `model.load_state_dict(ck["model"])` với `global_step = 0` và `optimizer` mới tinh khi chuyển giao từ màn `1-1` sang `4-1` hoặc `7-1`.
 3. **Script Vẽ biểu đồ & Phân tích lỗi cho Báo cáo (`scripts/plot_report.py`):**
-   - Đọc `progress.csv` và `evals.csv` của các lần chạy để xuất hình вектор PDF/PNG độ phân giải 300 DPI:
+   - Đọc `progress.csv` và `evals.csv` của các lần chạy để xuất hình vector PDF/PNG độ phân giải 300 DPI:
      1. **6 đường cong học (Mục 6.3):** `ep_return`, `x_pos`, `flag_rate`, `entropy`, `approx_kl`, `clipfrac` theo `global_step` (làm mượt EMA kèm dải mờ dữ liệu gốc).
      2. **Biểu đồ Thí nghiệm so sánh 2 seed (Mục 6.4):** Đường trung bình $\pm$ độ lệch chuẩn giữa 2 cấu hình đối chứng trên 2 seed (`seed=1`, `seed=2`).
      3. **Biểu đồ Phân tích thất bại (Mục 6.5):** Histogram / Strip-plot phân bố tọa độ `x_pos` cuối mỗi lượt từ file `ket-qua-*.json` và `evals.csv`, chú thích rõ các tọa độ chướng ngại vật nơi Mario hay chết nhất (ví dụ hố nhảy và ống cống cao ở $x \approx 900\text{--}1800$ màn `1-1`, hồ lửa/Bowser ở $x \approx 1400\text{--}2100$ màn `1-4`, súng đại bác/Hammer Bros ở màn `7-1`).
@@ -250,14 +255,16 @@
 
 ## 6. Kế hoạch Thực nghiệm & Phân công Nhóm 4 Thành viên (Việt, Sơn, Quang, Tín)
 
-Để đạt tối đa điểm **Làm việc nhóm (CLO4)** và đảm bảo cả 4 máy/tài khoản Colab & Kaggle chạy song song không chồng chéo, công việc được chia đều theo cả **Phân hệ Mã nguồn (Tuần 1)** và **Nhánh Thực nghiệm Huấn luyện (Tuần 2–3)**:
+Để đạt tối đa điểm **Làm việc nhóm (CLO4)** và đảm bảo tiến độ vững chắc nhất:
+- **Tín** đồng phụ trách cài đặt, tích hợp và kiểm thử **cả 3 phân hệ cốt lõi (Phân hệ 1, 2, 3)** cùng với **Việt, Sơn, Quang**, đồng thời **độc lập thực hiện riêng toàn bộ Phân hệ 4** (hạ tầng huấn luyện đa nền tảng, cấu hình YAML, tự động hóa Colab/Kaggle, vẽ biểu đồ báo cáo và chinh phục màn điểm thưởng `7-1`).
+- Cả 4 thành viên đều vận hành song song các nhánh huấn luyện trên Colab/Kaggle:
 
 | Thành viên | Phân hệ Code & Kiểm thử (Tuần 1) | Nhánh Huấn luyện trên Colab/Kaggle (Tuần 2–3) | Phần Báo cáo & Vấn đáp phụ trách chính (Tuần 4) |
 |---|---|---|---|
-| **1. Việt** | `mario_ppo/wrappers.py` (`FrameSkip`, `GrayResize`, `ScalarizeReward`, `NoProgressTruncation`, `MarioRewardShaping`) & `mario_ppo/env.py` + `tests/test_wrappers.py` | **Màn 1-1 chính thức** (`seed=1`, `seed=2` với cấu hình `configs/1-1.yaml`) $\rightarrow$ Chọn ra checkpoint `1-1` đạt `flag_rate` cao nhất ($\ge 0.90$). | **Mục 1 & Mục 2 Báo cáo:** Tiền xử lý ảnh, cơ chế FrameSkip/Max-pool, ScalarizeReward 5 chiều, và thiết lập môi trường. |
-| **2. Sơn** | `mario_ppo/model.py` (`ActorCritic.__init__`, `ActorCritic.forward`, khởi tạo trực giao) + `tests/test_model.py` | **Màn thưởng trong danh sách (`1-4` & `4-1`):** Chạy `configs/1-4.yaml` (từ đầu) và `configs/4-1.yaml` (transfer từ checkpoint `1-1` của Việt) $\rightarrow$ Đảm bảo `flag_rate` $\ge 0.80$ (15/15đ). | **Mục 1 (Model) & Mục 5 Báo cáo:** Kiến trúc mạng Actor-Critic, ý nghĩa khởi tạo trực giao `gain=0.01`, và Phân tích thất bại theo tọa độ $x$ ở các màn. |
-| **3. Quang** | `mario_ppo/ppo.py` (`compute_gae`, `clipped_policy_loss`, `value_loss`, `approx_kl_and_clipfrac`, `ppo_loss`, `ppo_update`) + `tests/test_gae.py`, `tests/test_ppo.py` | **Thí nghiệm So sánh (Ablation Study — Mục 6.4):** Trên màn `1-1`, chạy đối chứng **2 seed (`seed=1, 2`)** khi thay đổi hệ số chiết khấu $\gamma = 0.90$ so với $\gamma = 0.99$ (và đối chứng có/không có `NoProgressTruncation`). | **Mục 3 & Mục 4 Báo cáo:** Giải thích toán học GAE (xử lý `terminated` vs `truncated`), mục tiêu cắt PPO, chẩn đoán 6 đường cong học và kết luận Thí nghiệm so sánh. |
-| **4. Tín** | Tương thích đa nền tảng `train.py`, `configs/*.yaml`, `scripts/plot_report.py`, `notebooks/train_colab_kaggle.ipynb` + `tests/test_pipeline.py` | **Màn điểm thưởng ngoài danh sách (`7-1` — +10đ):** Chạy `configs/7-1.yaml` (cả từ đầu và transfer từ checkpoint `1-1`), xuất toàn bộ JSON + Video đánh giá chuẩn `--seed 2026`. | **Mục 2, Mục 6 & Tổng hợp PDF + Slide:** Bảng tổng hợp cấu hình/tốc độ SPS, biểu đồ báo cáo 8 trang, đóng gói `nhom-1.zip` và điều phối demo vấn đáp. |
+| **1. Việt** *(cùng Tín)* | **Phân hệ 1:** `mario_ppo/wrappers.py` (`FrameSkip`, `GrayResize`, `ScalarizeReward`, `NoProgressTruncation`, `MarioRewardShaping`) & `mario_ppo/env.py` + `tests/test_wrappers.py` | **Màn 1-1 chính thức** (`seed=1`, `seed=2` với cấu hình `configs/1-1.yaml`) $\rightarrow$ Chọn ra checkpoint `1-1` đạt `flag_rate` cao nhất ($\ge 0.90$). | **Mục 1 & Mục 2 Báo cáo:** Tiền xử lý ảnh, cơ chế FrameSkip/Max-pool, ScalarizeReward 5 chiều, và thiết lập môi trường. |
+| **2. Sơn** *(cùng Tín)* | **Phân hệ 2:** `mario_ppo/model.py` (`ActorCritic.__init__`, `ActorCritic.forward`, khởi tạo trực giao) + `tests/test_model.py` | **Màn thưởng trong danh sách (`1-4` & `4-1`):** Chạy `configs/1-4.yaml` (từ đầu) và `configs/4-1.yaml` (transfer từ checkpoint `1-1` của Việt) $\rightarrow$ Đảm bảo `flag_rate` $\ge 0.80$ (15/15đ). | **Mục 1 (Model) & Mục 5 Báo cáo:** Kiến trúc mạng Actor-Critic, ý nghĩa khởi tạo trực giao `gain=0.01`, và Phân tích thất bại theo tọa độ $x$ ở các màn. |
+| **3. Quang** *(cùng Tín)* | **Phân hệ 3:** `mario_ppo/ppo.py` (`compute_gae`, `clipped_policy_loss`, `value_loss`, `approx_kl_and_clipfrac`, `ppo_loss`, `ppo_update`) + `tests/test_gae.py`, `tests/test_ppo.py` | **Thí nghiệm So sánh (Ablation Study — Mục 6.4):** Trên màn `1-1`, chạy đối chứng **2 seed (`seed=1, 2`)** khi thay đổi hệ số chiết khấu $\gamma = 0.90$ so với $\gamma = 0.99$ (và đối chứng có/không có `NoProgressTruncation`). | **Mục 3 & Mục 4 Báo cáo:** Giải thích toán học GAE (xử lý `terminated` vs `truncated`), mục tiêu cắt PPO, chẩn đoán 6 đường cong học và kết luận Thí nghiệm so sánh. |
+| **4. Tín** *(Toàn diện 1–3 & làm riêng Phân hệ 4)* | **Đồng phụ trách Phân hệ 1, 2, 3** (cài đặt, rà soát code & đảm bảo pass 100% `pytest` toàn cục) + **Làm riêng Phân hệ 4:** `train.py`, `configs/*.yaml`, `scripts/plot_report.py`, `notebooks/train_colab_kaggle.ipynb` + `tests/test_pipeline.py` | **Màn điểm thưởng ngoài danh sách (`7-1` — +10đ) & Hỗ trợ huấn luyện toàn cục:** Chạy `configs/7-1.yaml` (cả từ đầu và transfer từ checkpoint `1-1`), xuất toàn bộ JSON + Video đánh giá chuẩn `--seed 2026`. | **Nắm toàn bộ 4 phân hệ khi vấn đáp; phụ trách Mục 2, Mục 6 & Tổng hợp PDF + Slide:** Bảng tổng hợp cấu hình/tốc độ SPS, biểu đồ báo cáo 8 trang, đóng gói `nhom-1.zip` và điều phối demo. |
 
 ---
 
