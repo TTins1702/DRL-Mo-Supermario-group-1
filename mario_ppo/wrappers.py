@@ -137,7 +137,19 @@ class FrameSkip(gym.Wrapper):
         self.skip = skip
 
     def step(self, action):
-        raise NotImplementedError("TODO: FrameSkip.step")
+        total_reward = None
+        prev_obs = None
+        last_obs = None
+        for _ in range(self.skip):
+            obs, reward, terminated, truncated, info = self.env.step(action)
+            if total_reward is None:
+                total_reward = np.zeros_like(reward, dtype=np.float32)
+            total_reward += np.asarray(reward, dtype=np.float32)
+            prev_obs, last_obs = last_obs, obs.copy()
+            if terminated or truncated:
+                break
+        pooled_obs = last_obs if prev_obs is None else np.maximum(prev_obs, last_obs)
+        return pooled_obs, total_reward, terminated, truncated, info
 
 
 class GrayResize(gym.ObservationWrapper):
@@ -151,10 +163,11 @@ class GrayResize(gym.ObservationWrapper):
     def __init__(self, env, size=84):
         super().__init__(env)
         self.size = size
-        raise NotImplementedError("TODO: GrayResize.__init__ (đặt self.observation_space)")
+        self.observation_space = gym.spaces.Box(0, 255, (size, size), dtype=np.uint8)
 
     def observation(self, obs):
-        raise NotImplementedError("TODO: GrayResize.observation")
+        gray = cv2.cvtColor(obs, cv2.COLOR_RGB2GRAY)
+        return cv2.resize(gray, (self.size, self.size), interpolation=cv2.INTER_AREA)
 
 
 class ScalarizeReward(gym.Wrapper):
@@ -168,12 +181,64 @@ class ScalarizeReward(gym.Wrapper):
 
     def __init__(self, env, weights):
         super().__init__(env)
-        raise NotImplementedError("TODO: ScalarizeReward.__init__")
+        reward_space = getattr(env.unwrapped, "reward_space", None)
+        n_obj = reward_space.shape[0] if reward_space is not None else 5
+        w = np.asarray(weights, dtype=np.float32)
+        if w.shape != (n_obj,):
+            raise ValueError(f"Expected {n_obj} weights, got shape {w.shape}")
+        self.weights = w
 
     def step(self, action):
-        raise NotImplementedError("TODO: ScalarizeReward.step")
+        obs, reward, terminated, truncated, info = self.env.step(action)
+        vec = np.asarray(reward, dtype=np.float32)
+        info = dict(info, vector_reward=vec)
+        return obs, float(np.dot(self.weights, vec)), terminated, truncated, info
 
 
 # ---------------------------------------------------------------------------------------------------------
 # Wrapper bổ sung của nhóm (tùy chọn) - thêm ở đây
 # ---------------------------------------------------------------------------------------------------------
+
+class NoProgressTruncation(gym.Wrapper):
+    """Cắt lượt huấn luyện khi Mario không vượt vị trí x xa nhất trong nhiều bước tác tử."""
+
+    def __init__(self, env, max_steps=180):
+        super().__init__(env)
+        self.max_steps = max_steps
+        self._max_x = -1
+        self._stalled = 0
+
+    def reset(self, **kwargs):
+        self._max_x = -1
+        self._stalled = 0
+        return self.env.reset(**kwargs)
+
+    def step(self, action):
+        obs, reward, terminated, truncated, info = self.env.step(action)
+        x = int(info.get("x_pos", 0))
+        if x > self._max_x:
+            self._max_x = x
+            self._stalled = 0
+        else:
+            self._stalled += 1
+        if not terminated and self._stalled >= self.max_steps:
+            truncated = True
+        return obs, reward, terminated, truncated, info
+
+
+class MarioRewardShaping(gym.Wrapper):
+    """Định hình riêng thành phần x_pos của reward khi huấn luyện."""
+
+    def __init__(self, env, flag_bonus=0.0, stuck_penalty=0.0):
+        super().__init__(env)
+        self.flag_bonus = flag_bonus
+        self.stuck_penalty = stuck_penalty
+
+    def step(self, action):
+        obs, reward, terminated, truncated, info = self.env.step(action)
+        shaped_reward = np.array(reward, dtype=np.float32, copy=True)
+        if info.get("flag_get", False):
+            shaped_reward[0] += self.flag_bonus
+        if shaped_reward[0] <= 0 and not terminated:
+            shaped_reward[0] += self.stuck_penalty
+        return obs, shaped_reward, terminated, truncated, info
