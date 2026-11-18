@@ -1,0 +1,42 @@
+# Cấu hình mặc định. Ghi đè trên dòng lệnh: python -m mario_ppo.train level=1-4 algo.lr=1e-4
+level: "1-1"
+seed: 1
+device: auto            # auto | cpu | cuda
+run_dir: null           # mặc định runs/<level>/<thời điểm>
+resume: null            # checkpoint .pt để chạy tiếp (trọng số + optimizer + số bước)
+torch_threads: 2        # số luồng CPU của torch trong tiến trình huấn luyện
+checkpoint_every: 500_000
+eval_episodes: 5        # lượt đánh giá ở mỗi checkpoint (0 = tắt)
+eval_max_steps: 3000
+video: true             # ghi video lượt tốt nhất ở mỗi checkpoint
+
+env:
+  actions: simple       # right_only | simple | simple_down | complex
+  frame_skip: 4
+  frame_stack: 4
+  size: 84
+  # [x_pos, time, death, coin, enemy]
+  weights: [1.0, 1.0, 2.0, 0.05, 0.05]
+  noop_max: 30          # 0..30 bước NOOP ngẫu nhiên đầu mỗi lượt khi huấn luyện
+  normalize_reward: true
+
+model: {}               # tham số thêm cho ActorCritic(...) nếu nhóm cần
+
+algo:
+  num_envs: 16
+  num_steps: 256        # 16 x 256 = 4096 mẫu mỗi lần cập nhật
+  num_minibatches: 8
+  update_epochs: 4
+  total_steps: 5_000_000
+  lr: 2.5e-4
+  anneal_lr: true
+  adam_eps: 1e-5
+  gamma: 0.9
+  gae_lambda: 0.95
+  clip_coef: 0.2
+  clip_vloss: false
+  norm_adv: true
+  ent_coef: 0.01
+  vf_coef: 0.25
+  max_grad_norm: 0.5
+  target_kl: null

@@ -1,0 +1,23 @@
+[project]
+name = "mario-ppo"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "mo-gymnasium==1.3.2",
+    "gym-super-mario-bros==7.4.0",
+    "nes-py==8.2.1",
+    "numpy<2",  # nes-py 8.2.1 tràn số với NumPy 2
+    "opencv-python-headless",
+    "torch",
+    "omegaconf>=2.3",
+    "imageio[ffmpeg]",
+    "pytest",
+]
+
+[tool.setuptools]
+packages = ["mario_ppo"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+filterwarnings = ["ignore::DeprecationWarning", "ignore::UserWarning"]
