@@ -105,3 +105,16 @@ def test_shapes_and_independent_envs():
         a1, _ = compute_gae(r[:, n:n + 1], v[:, n:n + 1], term[:, n:n + 1], trunc[:, n:n + 1],
                             fv[:, n:n + 1], last[n:n + 1], gamma=0.9, lam=0.95)
         assert torch.allclose(a1[:, 0], adv[:, n], atol=1e-6)
+
+def test_mixed_boundary_truncated_vs_continuing_across_envs():
+    # Môi trường 0 bị cắt ở t=1 (dùng final_values[1, 0]=4.0); môi trường 1 chạy tiếp (dùng last_value[1]=10.0)
+    rewards = torch.tensor([[1.0, 1.0], [2.0, 2.0]])
+    values = torch.tensor([[2.0, 2.0], [3.0, 3.0]])
+    terminated = torch.zeros(2, 2)
+    truncated = torch.tensor([[0.0, 0.0], [1.0, 0.0]])
+    final_values = torch.tensor([[0.0, 0.0], [4.0, 999.0]])
+    last_value = torch.tensor([123.0, 10.0])
+    adv, ret = compute_gae(rewards, values, terminated, truncated, final_values, last_value, gamma=0.9, lam=0.8)
+    # Env 0 tại t=1: 2 + 0.9 * 4 - 3 = 2.6; Env 1 tại t=1: 2 + 0.9 * 10 - 3 = 8.0
+    assert adv[1, 0].item() == pytest.approx(2.6, abs=1e-5)
+    assert adv[1, 1].item() == pytest.approx(8.0, abs=1e-5)
