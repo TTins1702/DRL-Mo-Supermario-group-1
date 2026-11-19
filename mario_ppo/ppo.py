@@ -28,7 +28,21 @@ def compute_gae(rewards, values, terminated, truncated, final_values, last_value
       - Truy hồi lùi: A_t = delta_t + gamma * lam * (1 - terminated_t) * (1 - truncated_t) * A_{t+1}
         (sau khi kết thúc hoặc bị cắt, bước kế trong bộ đệm thuộc lượt khác).
     """
-    raise NotImplementedError("TODO: compute_gae")
+    T, N = rewards.shape
+    advantages = torch.zeros_like(rewards)
+    gae = torch.zeros(N, dtype=rewards.dtype, device=rewards.device)
+
+    for t in reversed(range(T)):
+        next_val = last_value if t == T - 1 else values[t + 1]
+        next_val = torch.where(truncated[t] > 0.5, final_values[t], next_val)
+        non_terminal = 1.0 - terminated[t]
+        continuing = non_terminal * (1.0 - truncated[t])
+        delta = rewards[t] + gamma * non_terminal * next_val - values[t]
+        gae = delta + gamma * lam * continuing * gae
+        advantages[t] = gae
+
+    returns = advantages + values
+    return advantages, returns
 
 
 def clipped_policy_loss(ratio, advantages, clip):
@@ -36,7 +50,9 @@ def clipped_policy_loss(ratio, advantages, clip):
 
     Mục đích: tăng xác suất hành động có lợi thế dương nhưng không để chính sách mới lệch quá xa chính sách cũ.
     """
-    raise NotImplementedError("TODO: clipped_policy_loss")
+    unclipped = ratio * advantages
+    clipped = torch.clamp(ratio, 1.0 - clip, 1.0 + clip) * advantages
+    return -torch.minimum(unclipped, clipped).mean()
 
 
 def value_loss(values, returns, old_values=None, clip=None):
@@ -45,7 +61,12 @@ def value_loss(values, returns, old_values=None, clip=None):
     Biến thể cắt (khi old_values và clip khác None): v_clip = old_values + clamp(values - old_values, -clip, clip),
     mất mát = mean(max((values - returns)^2, (v_clip - returns)^2)).
     """
-    raise NotImplementedError("TODO: value_loss")
+    v_loss_unclipped = (values - returns).pow(2)
+    if old_values is not None and clip is not None:
+        v_clipped = old_values + torch.clamp(values - old_values, -clip, clip)
+        v_loss_clipped = (v_clipped - returns).pow(2)
+        return torch.maximum(v_loss_unclipped, v_loss_clipped).mean()
+    return v_loss_unclipped.mean()
 
 
 def approx_kl_and_clipfrac(log_ratio, clip):
@@ -54,7 +75,11 @@ def approx_kl_and_clipfrac(log_ratio, clip):
       clipfrac  = tỉ lệ mẫu có |ratio - 1| > clip
     Mục đích: theo dõi chính sách thay đổi bao nhiêu sau mỗi lần cập nhật (approx_kl quá lớn = bước quá dài).
     """
-    raise NotImplementedError("TODO: approx_kl_and_clipfrac")
+    with torch.no_grad():
+        ratio = torch.exp(log_ratio)
+        approx_kl = ((ratio - 1.0) - log_ratio).mean().item()
+        clipfrac = ((ratio - 1.0).abs() > clip).float().mean().item()
+    return float(approx_kl), float(clipfrac)
 
 
 def ppo_loss(new_logp, entropy, values, batch, cfg):
@@ -67,7 +92,29 @@ def ppo_loss(new_logp, entropy, values, batch, cfg):
       (unbiased=False). returns không đổi.
     Đầu ra: (loss tensor vô hướng, stats dict các float: policy_loss, value_loss, entropy, approx_kl, clipfrac).
     """
-    raise NotImplementedError("TODO: ppo_loss")
+    adv = batch["advantages"]
+    if cfg.norm_adv:
+        adv = (adv - adv.mean()) / (adv.std(unbiased=False) + 1e-8)
+
+    log_ratio = new_logp - batch["old_logp"]
+    ratio = torch.exp(log_ratio)
+
+    p_loss = clipped_policy_loss(ratio, adv, cfg.clip_coef)
+    v_clip = cfg.clip_coef if getattr(cfg, "clip_vloss", False) else None
+    v_loss = value_loss(values, batch["returns"], old_values=batch.get("old_values"), clip=v_clip)
+    ent_mean = entropy.mean()
+
+    loss = p_loss + cfg.vf_coef * v_loss - cfg.ent_coef * ent_mean
+    approx_kl, clipfrac = approx_kl_and_clipfrac(log_ratio, cfg.clip_coef)
+
+    stats = {
+        "policy_loss": float(p_loss.item()),
+        "value_loss": float(v_loss.item()),
+        "entropy": float(ent_mean.item()),
+        "approx_kl": approx_kl,
+        "clipfrac": clipfrac,
+    }
+    return loss, stats
 
 
 def ppo_update(model, optimizer, batch, cfg):
@@ -86,7 +133,50 @@ def ppo_update(model, optimizer, batch, cfg):
       - nếu cfg.target_kl khác None và approx_kl trung bình của epoch vừa xong > target_kl: dừng các epoch còn lại.
     Đầu ra: dict trung bình các stats của ppo_loss trên mọi mini-batch, thêm "minibatch_updates" (số bước gradient).
     """
-    raise NotImplementedError("TODO: ppo_update")
+    B = batch["obs"].shape[0]
+    mb_size = B // cfg.num_minibatches
+    device = batch["obs"].device
+
+    totals = {
+        "policy_loss": 0.0,
+        "value_loss": 0.0,
+        "entropy": 0.0,
+        "approx_kl": 0.0,
+        "clipfrac": 0.0,
+    }
+    minibatch_updates = 0
+
+    for _ in range(cfg.update_epochs):
+        perm = torch.randperm(B, device=device)
+        epoch_kls = []
+
+        for start in range(0, B, mb_size):
+            idx = perm[start : start + mb_size]
+            mb = {k: v[idx] for k, v in batch.items()}
+
+            logits, values = model(mb["obs"])
+            dist = torch.distributions.Categorical(logits=logits)
+            new_logp = dist.log_prob(mb["actions"])
+            entropy = dist.entropy()
+
+            loss, stats = ppo_loss(new_logp, entropy, values, mb, cfg)
+
+            optimizer.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.max_grad_norm)
+            optimizer.step()
+
+            for k in totals:
+                totals[k] += stats[k]
+            epoch_kls.append(stats["approx_kl"])
+            minibatch_updates += 1
+
+        if cfg.target_kl is not None and (sum(epoch_kls) / len(epoch_kls)) > cfg.target_kl:
+            break
+
+    out = {k: v / minibatch_updates for k, v in totals.items()}
+    out["minibatch_updates"] = minibatch_updates
+    return out
 
 
 def linear_schedule(start, step, total):
