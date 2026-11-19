@@ -41,3 +41,10 @@ algo:
   vf_coef: 0.25
   max_grad_norm: 0.5
   target_kl: null
+
+wandb:
+  enabled: false        # bật bằng wandb.enabled=true để theo dõi metric + video lên W&B
+  project: "mario-ppo"
+  entity: null
+  name: null
+  tags: []

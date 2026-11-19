@@ -61,6 +61,29 @@ def _device(name):
     return torch.device(name)
 
 
+def _init_wandb(cfg_dict, run, resume_wandb_id=None):
+    wb_cfg = cfg_dict.get("wandb") or {}
+    if not wb_cfg.get("enabled"):
+        return None, None
+    import wandb
+
+    init_kw = {
+        "project": wb_cfg.get("project") or "mario-ppo",
+        "name": wb_cfg.get("name") or run.name,
+        "config": cfg_dict,
+        "resume": "allow",
+    }
+    if wb_cfg.get("entity"):
+        init_kw["entity"] = wb_cfg["entity"]
+    if wb_cfg.get("tags"):
+        init_kw["tags"] = list(wb_cfg["tags"])
+    run_id = wb_cfg.get("id") or resume_wandb_id
+    if run_id:
+        init_kw["id"] = run_id
+    wb_run = wandb.init(**init_kw)
+    return wandb, wb_run
+
+
 def train(cfg):
     """Huấn luyện theo cấu hình OmegaConf `cfg`; trả đường dẫn run_dir."""
     import torch
@@ -88,11 +111,13 @@ def train(cfg):
     model = ActorCritic(n_actions, in_channels=cfg.env.frame_stack, **cfg_dict.get("model", {})).to(device)
     opt = torch.optim.Adam(model.parameters(), lr=a.lr, eps=a.adam_eps)
     global_step = 0
+    resume_wandb_id = None
     if cfg.resume:
         ck = torch.load(cfg.resume, map_location=device, weights_only=False)
         model.load_state_dict(ck["model"])
         opt.load_state_dict(ck["optimizer"])
         global_step = ck["global_step"]
+        resume_wandb_id = ck.get("wandb_id")
         print(f"resumed from {cfg.resume} at step {global_step}")
     elif cfg.get("init_ckpt"):
         init_ckpt = cfg.get("init_ckpt")
@@ -100,6 +125,7 @@ def train(cfg):
         model.load_state_dict(ck["model"])
         print(f"initialized model weights from {init_ckpt} at step 0")
 
+    wandb_mod, wb_run = _init_wandb(cfg_dict, run, resume_wandb_id=resume_wandb_id)
     progress, evals = _CSV(run / "progress.csv"), _CSV(run / "evals.csv")
     envs = _make_vec_env(env_cfg, cfg.level, a.num_envs, cfg.seed)
     T, N = a.num_steps, a.num_envs
@@ -113,16 +139,39 @@ def train(cfg):
     def checkpoint():
         tag = f"step_{global_step:09d}"
         path = run / "checkpoints" / f"{tag}.pt"
-        torch.save({"model": model.state_dict(), "optimizer": opt.state_dict(),
-                    "global_step": global_step, "config": cfg_dict}, path)
+        ckpt_payload = {
+            "model": model.state_dict(),
+            "optimizer": opt.state_dict(),
+            "global_step": global_step,
+            "config": cfg_dict,
+        }
+        if wb_run is not None:
+            ckpt_payload["wandb_id"] = wb_run.id
+        elif resume_wandb_id is not None:
+            ckpt_payload["wandb_id"] = resume_wandb_id
+        torch.save(ckpt_payload, path)
         if cfg.eval_episodes:
+            video_path = (run / "videos" / f"{tag}.mp4") if cfg.video else None
             res = run_episodes(model, cfg.level, cfg_dict["env"], episodes=cfg.eval_episodes,
                                seed=cfg.seed * 1000 + global_step // cfg.checkpoint_every,
                                max_steps=cfg.eval_max_steps,
-                               video=(run / "videos" / f"{tag}.mp4") if cfg.video else None)
+                               video=video_path)
             evals.write({"global_step": global_step, "flag_rate": res["flag_rate"],
                          "x_pos": " ".join(map(str, res["x_pos"]))})
             print(f"[eval] step {global_step}: flag_rate {res['flag_rate']:.2f} x_pos {res['x_pos']}", flush=True)
+            if wb_run is not None:
+                eval_log = {
+                    "eval/flag_rate": float(res["flag_rate"]),
+                    "eval/mean_x_pos": float(np.mean(res["x_pos"])),
+                    "eval/max_x_pos": float(np.max(res["x_pos"])),
+                }
+                if video_path is not None and video_path.exists():
+                    eval_log["eval/video"] = wandb_mod.Video(
+                        str(video_path),
+                        caption=f"{cfg.level} step {global_step} flag={res['flag_rate']:.2f}",
+                        format="mp4",
+                    )
+                wb_run.log(eval_log, step=global_step)
         return path
 
     try:
@@ -177,6 +226,13 @@ def train(cfg):
                    "ep_length": round(float(ep[:, 1].mean()), 1), "x_pos": round(float(ep[:, 2].mean()), 1),
                    "flag_rate": round(float(ep[:, 3].mean()), 3)}
             progress.write(row)
+            if wb_run is not None:
+                wb_metrics = {
+                    f"train/{k}": float(v)
+                    for k, v in row.items()
+                    if k != "global_step" and np.isfinite(float(v))
+                }
+                wb_run.log(wb_metrics, step=global_step)
             print(f"step {global_step:>9d}  sps {sps:6.1f}  return {row['ep_return']:8.2f}  "
                   f"x {row['x_pos']:7.1f}  flag {row['flag_rate']:.2f}  kl {row.get('approx_kl', 0):.4f}", flush=True)
             if global_step >= next_ckpt:
@@ -188,6 +244,8 @@ def train(cfg):
         envs.close()
         progress.close()
         evals.close()
+        if wb_run is not None:
+            wb_run.finish()
     return run
 
 

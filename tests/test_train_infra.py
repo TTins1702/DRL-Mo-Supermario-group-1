@@ -200,8 +200,106 @@ def test_default_yaml_preserves_defaults_and_has_init_ckpt():
     assert cfg.algo.total_steps == 5_000_000
     assert cfg.algo.gamma == pytest.approx(0.9)
     assert cfg.env.actions == "simple"
+    assert "wandb" in cfg and cfg.wandb.enabled is False and cfg.wandb.project == "mario-ppo"
     for trick in ("max_no_progress_steps", "flag_bonus", "stuck_penalty"):
         assert trick not in cfg.env
+
+
+def test_train_wandb_logs_metrics_eval_video_and_preserves_id_on_resume(tmp_path, monkeypatch):
+    import types
+    import mario_ppo.evaluate as eval_mod
+
+    _patch_train_stubs(monkeypatch)
+
+    def fake_run_episodes(model, level, env_cfg, episodes=5, seed=0, max_steps=3000, video=None):
+        if video is not None:
+            Path(video).parent.mkdir(parents=True, exist_ok=True)
+            Path(video).write_bytes(b"fake-mp4-data")
+        return {"episodes": episodes, "flag_rate": 0.6, "x_pos": [1200, 3161], "steps": [200, 300], "noop_steps": [0, 1]}
+
+    monkeypatch.setattr(eval_mod, "run_episodes", fake_run_episodes)
+
+    init_calls = []
+    log_calls = []
+    finish_calls = []
+
+    class _FakeVideo:
+        def __init__(self, data_or_path, caption=None, format=None):
+            self.path = data_or_path
+            self.caption = caption
+            self.format = format
+
+    class _FakeRun:
+        def __init__(self, run_id):
+            self.id = run_id
+
+        def log(self, data, step=None):
+            log_calls.append((step, dict(data)))
+
+        def finish(self):
+            finish_calls.append(self.id)
+
+    def fake_init(**kwargs):
+        init_calls.append(dict(kwargs))
+        return _FakeRun(kwargs.get("id") or "wb_run_123")
+
+    fake_wandb = types.SimpleNamespace(init=fake_init, Video=_FakeVideo)
+    monkeypatch.setitem(sys.modules, "wandb", fake_wandb)
+
+    cfg = _infra_cfg(
+        tmp_path / "wb_run",
+        **{
+            "eval_episodes": 2,
+            "video": True,
+            "wandb.enabled": True,
+            "wandb.project": "mario-ppo",
+            "wandb.name": "1-1_seed1",
+        },
+    )
+    run1 = train_mod.train(cfg)
+    ckpt1 = sorted((run1 / "checkpoints").glob("*.pt"))[-1]
+    ck1 = torch.load(ckpt1, weights_only=False)
+
+    assert len(init_calls) == 1
+    assert init_calls[0]["project"] == "mario-ppo"
+    assert init_calls[0]["name"] == "1-1_seed1"
+    assert ck1["wandb_id"] == "wb_run_123"
+    assert finish_calls == ["wb_run_123"]
+
+    merged_logs = {}
+    for step, payload in log_calls:
+        assert step == 8
+        merged_logs.update(payload)
+    assert "train/sps" in merged_logs and "train/policy_loss" in merged_logs
+    assert merged_logs["eval/flag_rate"] == pytest.approx(0.6)
+    assert merged_logs["eval/mean_x_pos"] == pytest.approx((1200 + 3161) / 2)
+    assert isinstance(merged_logs["eval/video"], _FakeVideo)
+    assert merged_logs["eval/video"].format == "mp4"
+    assert Path(merged_logs["eval/video"].path).exists()
+
+    # Resume lại: phải giữ đúng wandb_id cũ và resume="allow"
+    cfg_res = _infra_cfg(
+        tmp_path / "wb_run_resume",
+        resume=str(ckpt1),
+        **{
+            "algo.total_steps": 16,
+            "eval_episodes": 0,
+            "video": False,
+            "wandb.enabled": True,
+            "wandb.project": "mario-ppo",
+        },
+    )
+    train_mod.train(cfg_res)
+    assert len(init_calls) == 2
+    assert init_calls[1]["id"] == "wb_run_123"
+    assert init_calls[1]["resume"] == "allow"
+
+
+def test_train_wandb_disabled_does_not_import_wandb(tmp_path, monkeypatch):
+    _patch_train_stubs(monkeypatch)
+    monkeypatch.setitem(sys.modules, "wandb", None)  # nếu import wandb sẽ ném ModuleNotFoundError
+    run = train_mod.train(_infra_cfg(tmp_path / "no_wb"))
+    assert (run / "progress.csv").exists()
 
 
 def test_stage_and_ablation_configs_complete_and_match_spec():
@@ -299,6 +397,12 @@ def test_colab_kaggle_notebook_runtime_contracts():
 
     # 4. Cell đánh giá phải ưu tiên đọc level từ RUN_DIR / "config.yaml" để tôn trọng EXTRA_OVERRIDES
     assert 'RUN_DIR / "config.yaml"' in full_src
+
+    # 5. Hỗ trợ đọc Secret (GITHUB_TOKEN, WANDB_API_KEY) và bật W&B tùy chọn
+    assert "WANDB_API_KEY" in full_src
+    assert "GITHUB_TOKEN" in full_src
+    assert "USE_WANDB" in full_src
+    assert "UserSecretsClient" in full_src and "userdata" in full_src
 
 
 def test_pyproject_declares_matplotlib_dependency():

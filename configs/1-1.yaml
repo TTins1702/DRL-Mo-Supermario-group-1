@@ -44,3 +44,10 @@ algo:
   vf_coef: 0.25
   max_grad_norm: 0.5
   target_kl: null
+
+wandb:
+  enabled: false
+  project: "mario-ppo"
+  entity: null
+  name: null
+  tags: []
