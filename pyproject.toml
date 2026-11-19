@@ -10,6 +10,7 @@ dependencies = [
     "opencv-python-headless",
     "torch",
     "omegaconf>=2.3",
+    "matplotlib",
     "imageio[ffmpeg]",
     "pytest",
 ]
