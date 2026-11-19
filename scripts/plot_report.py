@@ -117,16 +117,19 @@ def plot_learning_curves(progress_csv, out_path, ema_alpha=0.15, title=None):
         vals = data[col]
         mask = np.isfinite(steps) & np.isfinite(vals)
         if mask.any():
-            ax.plot(steps[mask], vals[mask], color=color, alpha=0.25, linewidth=1.0, label="Raw")
+            marker = "o" if int(mask.sum()) == 1 else None
+            ax.plot(steps[mask], vals[mask], color=color, alpha=0.25, linewidth=1.0, marker=marker, label="Raw")
             smooth = _ema(vals[mask], alpha=ema_alpha)
-            ax.plot(steps[mask], smooth, color=color, linewidth=2.0, label=f"EMA ({ema_alpha:.2f})")
-            ax.legend(loc="best", fontsize=8, frameon=False)
+            ax.plot(steps[mask], smooth, color=color, linewidth=2.0, marker=marker, label=f"EMA ({ema_alpha:.2f})")
         else:
             ax.text(0.5, 0.5, "No finite values", ha="center", va="center", transform=ax.transAxes)
 
         if col == "flag_rate":
             ax.axhline(0.8, color="black", linestyle=":", linewidth=1.2, label="Mốc 0.8")
             ax.set_ylim(-0.05, 1.05)
+
+        if mask.any() or col == "flag_rate":
+            ax.legend(loc="best", fontsize=8, frameon=False)
 
     fig.suptitle(title or f"Đường cong học PPO — {Path(progress_csv).parent.name}", fontsize=13, fontweight="bold")
     return _save_fig(fig, out_path)

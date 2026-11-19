@@ -264,3 +264,46 @@ def test_colab_kaggle_notebook_valid_json_and_python_cells():
         "scripts.plot_report",
     ):
         assert token in full_src, f"Missing {token!r} in notebook"
+
+
+def test_colab_kaggle_notebook_runtime_contracts():
+    nb = json.loads(Path("notebooks/train_colab_kaggle.ipynb").read_text(encoding="utf-8"))
+    code_cells = ["".join(c["source"]) for c in nb["cells"] if c["cell_type"] == "code"]
+    full_src = "\n".join(code_cells)
+
+    # 1. Mỗi đoạn lệnh `python -c "..."` nhúng trong notebook phải tự import đủ mô-đun
+    tree = ast.parse(full_src)
+    inline_snippets = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.List):
+            elts = node.elts
+            if (
+                len(elts) >= 3
+                and isinstance(elts[1], ast.Constant)
+                and elts[1].value == "-c"
+                and isinstance(elts[2], ast.Constant)
+                and isinstance(elts[2].value, str)
+            ):
+                inline_snippets.append(elts[2].value)
+    assert inline_snippets, "Expected at least one python -c check in notebook"
+    for snippet in inline_snippets:
+        exec(compile(snippet, "<notebook-inline>", "exec"), {})
+
+    # 2. run_cmd phải stream stdout/stderr qua Popen để không bị nuốt log trên Kaggle/Jupyter
+    assert "subprocess.Popen" in full_src
+    assert "stdout=subprocess.PIPE" in full_src
+
+    # 3. Colab không clone REPO_DIR vào Google Drive (tránh FUSE chậm/xung đột), local dùng thẳng repo hiện tại
+    assert '"/content/DRL-Mo-Supermario-group-1"' in full_src
+    assert '(Path.cwd() / "mario_ppo").is_dir()' in full_src
+
+    # 4. Cell đánh giá phải ưu tiên đọc level từ RUN_DIR / "config.yaml" để tôn trọng EXTRA_OVERRIDES
+    assert 'RUN_DIR / "config.yaml"' in full_src
+
+
+def test_pyproject_declares_matplotlib_dependency():
+    import tomllib
+
+    pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+    deps = pyproject["project"]["dependencies"]
+    assert any(dep.lower().startswith("matplotlib") for dep in deps)

@@ -126,3 +126,28 @@ def test_plot_report_cli_subcommands(tmp_path):
     out_f = tmp_path / "cli_fail.png"
     plot_report_main(["failures", "--json", str(eval_json), "--level", "7-1", "--out", str(out_f)])
     assert out_f.exists() and out_f.stat().st_size > 0
+
+
+def test_plot_learning_curves_includes_threshold_legend_and_single_point_marker(tmp_path, monkeypatch):
+    from matplotlib.figure import Figure
+
+    p_single = tmp_path / "single" / "progress.csv"
+    _write_dummy_progress(p_single, steps=(4096,))
+
+    captured = {}
+    orig_savefig = Figure.savefig
+
+    def spy_savefig(self, *args, **kwargs):
+        flag_ax = self.axes[2]
+        legend = flag_ax.get_legend()
+        captured["flag_legend_texts"] = [t.get_text() for t in legend.get_texts()] if legend else []
+        captured["single_markers"] = [line.get_marker() for line in self.axes[0].lines]
+        return orig_savefig(self, *args, **kwargs)
+
+    monkeypatch.setattr(Figure, "savefig", spy_savefig)
+
+    out = tmp_path / "single_curves.png"
+    plot_learning_curves(p_single, out)
+    assert out.exists() and out.stat().st_size > 0
+    assert "Mốc 0.8" in captured["flag_legend_texts"]
+    assert any(m not in ("None", "", None) for m in captured["single_markers"])
