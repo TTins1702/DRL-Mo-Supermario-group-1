@@ -1,0 +1,46 @@
+# Cấu hình màn thưởng trong danh sách 1-4 (Colab/Kaggle: batch 8 x 512 = 4096)
+level: "1-4"
+seed: 1
+device: auto
+run_dir: null
+resume: null
+init_ckpt: null
+torch_threads: 2
+checkpoint_every: 500_000
+eval_episodes: 5
+eval_max_steps: 3000
+video: true
+
+env:
+  actions: simple
+  frame_skip: 4
+  frame_stack: 4
+  size: 84
+  # [x_pos, time, death, coin, enemy]
+  weights: [1.0, 1.0, 2.0, 0.05, 0.05]
+  noop_max: 30
+  normalize_reward: true
+  max_no_progress_steps: 220  # đủ thời gian chờ thanh lửa xoay trong lâu đài
+  flag_bonus: 8.0
+  stuck_penalty: 0.0
+
+model: {}
+
+algo:
+  num_envs: 8
+  num_steps: 512
+  num_minibatches: 8
+  update_epochs: 4
+  total_steps: 6_000_000
+  lr: 2.5e-4
+  anneal_lr: true
+  adam_eps: 1e-5
+  gamma: 0.95                 # tầm nhìn xa hơn cho hồ dung nham và Bowser
+  gae_lambda: 0.95
+  clip_coef: 0.2
+  clip_vloss: false
+  norm_adv: true
+  ent_coef: 0.01
+  vf_coef: 0.25
+  max_grad_norm: 0.5
+  target_kl: null

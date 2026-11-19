@@ -11,6 +11,7 @@ Kết quả trong run_dir (mặc định runs/<level>/<thời điểm>):
 import argparse
 import csv
 import functools
+import sys
 import time
 from collections import deque
 from datetime import datetime
@@ -30,7 +31,8 @@ def _make_vec_env(env_cfg, level, num_envs, seed):
     mode = gym.vector.AutoresetMode.SAME_STEP  # lượt mới bắt đầu ngay trong bước kết thúc; quan sát cuối ở info
     if num_envs == 1:
         return gym.vector.SyncVectorEnv(fns, autoreset_mode=mode)
-    return gym.vector.AsyncVectorEnv(fns, context="forkserver", autoreset_mode=mode)
+    ctx = "spawn" if sys.platform == "win32" else "forkserver"
+    return gym.vector.AsyncVectorEnv(fns, context=ctx, autoreset_mode=mode)
 
 
 class _CSV:
@@ -92,6 +94,11 @@ def train(cfg):
         opt.load_state_dict(ck["optimizer"])
         global_step = ck["global_step"]
         print(f"resumed from {cfg.resume} at step {global_step}")
+    elif cfg.get("init_ckpt"):
+        init_ckpt = cfg.get("init_ckpt")
+        ck = torch.load(init_ckpt, map_location=device, weights_only=False)
+        model.load_state_dict(ck["model"])
+        print(f"initialized model weights from {init_ckpt} at step 0")
 
     progress, evals = _CSV(run / "progress.csv"), _CSV(run / "evals.csv")
     envs = _make_vec_env(env_cfg, cfg.level, a.num_envs, cfg.seed)

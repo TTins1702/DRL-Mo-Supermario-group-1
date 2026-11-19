@@ -4,6 +4,7 @@ seed: 1
 device: auto            # auto | cpu | cuda
 run_dir: null           # mặc định runs/<level>/<thời điểm>
 resume: null            # checkpoint .pt để chạy tiếp (trọng số + optimizer + số bước)
+init_ckpt: null         # checkpoint .pt chỉ nạp trọng số (học chuyển giao, giữ global_step=0)
 torch_threads: 2        # số luồng CPU của torch trong tiến trình huấn luyện
 checkpoint_every: 500_000
 eval_episodes: 5        # lượt đánh giá ở mỗi checkpoint (0 = tắt)

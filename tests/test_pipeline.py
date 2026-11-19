@@ -74,3 +74,17 @@ def test_evaluate_checkpoint_reports_flag_rate(tmp_path):
     # cùng seed -> cùng các điểm xuất phát
     res2 = evaluate_checkpoint(ckpt, level="1-1", episodes=2, seed=2026, max_steps=30)
     assert res2["noop_steps"] == res["noop_steps"]
+
+
+def test_train_init_ckpt_loads_weights_at_step_zero(tmp_path):
+    from mario_ppo.train import train
+    run1 = train(_tiny_cfg(tmp_path / "src"))
+    ckpt1 = sorted((run1 / "checkpoints").glob("*.pt"))[-1]
+
+    cfg2 = _tiny_cfg(tmp_path / "transfer")
+    cfg2.init_ckpt = str(ckpt1)
+    cfg2.algo.total_steps = 32
+    run2 = train(cfg2)
+    ck2 = torch.load(sorted((run2 / "checkpoints").glob("*.pt"))[-1], weights_only=False)
+    assert ck2["global_step"] == 32
+
