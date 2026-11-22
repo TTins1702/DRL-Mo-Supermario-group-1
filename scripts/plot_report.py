@@ -27,10 +27,10 @@ LEARNING_METRICS = [
 ]
 
 STAGE_LANDMARKS = {
-    "1-1": [(950, "Ống cống cao"), (1400, "Hố nhảy rộng"), (3161, "Cờ đích (~3161)")],
+    "1-1": [(950, "Ống cống cao"), (1790, "Hố / cầu thang"), (2475, "Bậc thang cuối"), (3161, "Cờ đích")],
     "1-4": [(1400, "Hồ dung nham"), (2050, "Bowser & rìu"), (2240, "Rìu đích")],
-    "4-1": [(1200, "Lakitu / Spinies"), (2400, "Đoạn ống cuối"), (3161, "Cờ đích")],
-    "7-1": [(1300, "Bệ pháo Bullet Bill"), (2200, "Hammer Bros"), (3161, "Cờ đích")],
+    "4-1": [(1200, "Lakitu / Spinies"), (2400, "Đoạn ống cuối"), (3593, "Cờ đích")],
+    "7-1": [(867, "Đạn / quái đầu"), (1388, "Bệ pháo Bullet Bill"), (2180, "Hammer Bros"), (2857, "Cờ đích")],
 }
 
 
@@ -255,30 +255,47 @@ def plot_failure_x_distribution(eval_jsons, level, out_path, eval_csvs=None, tit
     ax_hist.axvline(med_x, color="#ff7f0e", linestyle="--", linewidth=1.5, label=f"Median x = {med_x:.0f}")
 
     ymax = ax_hist.get_ylim()[1]
+    ax_hist.set_ylim(0, ymax * 1.22)
+    xmin, xmax = ax_hist.get_xlim()
+    xspan = max(xmax - xmin, 1.0)
     for idx, (lx, note) in enumerate(STAGE_LANDMARKS.get(str(level), [])):
         ax_hist.axvline(lx, color="#555555", linestyle=":", linewidth=1.2)
+        near_right = (lx - xmin) / xspan > 0.80
+        ha = "right" if near_right else "left"
+        label_txt = f"{note} ({lx}) " if near_right else f" {note} ({lx})"
+        y_frac = 0.72 - 0.13 * (idx % 2)
         ax_hist.text(
             lx,
-            ymax * (0.94 - 0.09 * (idx % 2)),
-            f" {note} ({lx})",
+            ymax * y_frac,
+            label_txt,
             fontsize=8,
-            color="#333333",
+            color="#222222",
             va="top",
+            ha=ha,
+            bbox={"boxstyle": "round,pad=0.18", "facecolor": "white", "edgecolor": "none", "alpha": 0.8},
         )
 
     summary = f"N = {x_vals.size} lượt"
     if weighted_flag is not None:
-        summary += f"\nflag_rate = {weighted_flag:.2%}"
+        summary += f"  |  flag_rate = {weighted_flag:.2%}"
     ax_hist.text(
-        0.02,
-        0.95,
+        0.015,
+        0.96,
         summary,
         transform=ax_hist.transAxes,
         va="top",
         fontsize=9,
-        bbox={"boxstyle": "round,pad=0.35", "facecolor": "#f8f9fa", "edgecolor": "#cccccc"},
+        bbox={"boxstyle": "round,pad=0.32", "facecolor": "#f8f9fa", "edgecolor": "#cccccc"},
     )
-    ax_hist.legend(loc="upper right", fontsize=9, frameon=False)
+    ax_hist.legend(
+        loc="upper center",
+        bbox_to_anchor=(0.56, 0.99),
+        ncol=2,
+        fontsize=8.5,
+        frameon=True,
+        facecolor="white",
+        edgecolor="#dddddd",
+    )
 
     rng = np.random.default_rng(0)
     jitter = rng.uniform(-0.25, 0.25, size=x_vals.size)
