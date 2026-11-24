@@ -1,0 +1,162 @@
+{
+  "1-1_seed1": {
+    "total_steps": 4001792,
+    "mean_sps": 128.0,
+    "est_hours": 8.68,
+    "hardware": {
+      "platform": "Kaggle",
+      "cpu_physical": 2,
+      "cpu_logical": 4,
+      "gpu": "Tesla T4",
+      "startedAt": "2026-11-19T03:02:12.319035Z"
+    },
+    "official_eval": {
+      "checkpoint_step": 4001792,
+      "flag_rate": 1.0,
+      "mean_x_pos": 3161.0,
+      "solved": true
+    }
+  },
+  "4-1_seed1": {
+    "total_steps": 6000640,
+    "mean_sps": 305.2,
+    "est_hours": 5.46,
+    "hardware": {
+      "platform": "Google Colab (Drive)",
+      "note": "num_envs=16, num_steps=256"
+    },
+    "official_eval": {
+      "checkpoint_step": 6000640,
+      "flag_rate": 1.0,
+      "mean_x_pos": 3593.0,
+      "solved": true
+    },
+    "transfer_from": "runs/1-1_seed1/checkpoints/step_004001792.pt (SHA256 verified identical)"
+  },
+  "7-1_seed1": {
+    "total_steps": 8003584,
+    "mean_sps": 217.7,
+    "est_hours": 10.21,
+    "hardware": {
+      "platform": "Google Colab (Drive)",
+      "note": "num_envs=16, num_steps=256"
+    },
+    "official_eval": {
+      "checkpoint_step": 8003584,
+      "flag_rate": 0.7,
+      "mean_x_pos": 2483.5,
+      "solved": false
+    },
+    "transfer_from": "runs/1-1_seed1/checkpoints/step_004001792.pt (SHA256 verified identical, from step_000503808.pt config)",
+    "note": "Stage 1 (8.00M steps, transfer from 1-1); step_008003584.pt kept as init_ckpt for Stage 2."
+  },
+  "ablation/gamma090_seed1": {
+    "total_steps": 3002368,
+    "mean_sps": 118.0,
+    "est_hours": 7.07,
+    "hardware": {
+      "platform": "Kaggle",
+      "cpu_physical": 2,
+      "cpu_logical": 4,
+      "gpu": "Tesla T4",
+      "startedAt": "2026-11-19T14:00:20.229833Z"
+    },
+    "official_eval": {
+      "checkpoint_step": 3002368,
+      "flag_rate": 1.0,
+      "mean_x_pos": 3161.0,
+      "solved": true
+    }
+  },
+  "ablation/gamma090_seed2": {
+    "total_steps": 3002368,
+    "mean_sps": 129.9,
+    "est_hours": 6.42,
+    "hardware": {
+      "platform": "Kaggle",
+      "cpu_physical": 2,
+      "cpu_logical": 4,
+      "gpu": "Tesla T4",
+      "startedAt": "2026-11-20T07:32:02.333458Z"
+    },
+    "official_eval": {
+      "checkpoint_step": 3002368,
+      "flag_rate": 0.95,
+      "mean_x_pos": 3085.95,
+      "solved": true
+    }
+  },
+  "ablation/gamma099_seed1": {
+    "total_steps": 3002368,
+    "mean_sps": 82.5,
+    "est_hours": 10.1,
+    "hardware": {
+      "platform": "Kaggle",
+      "cpu_physical": 2,
+      "cpu_logical": 4,
+      "gpu": "CPU only",
+      "startedAt": "2026-11-19T06:55:28.808733Z"
+    },
+    "official_eval": {
+      "checkpoint_step": 3002368,
+      "flag_rate": 1.0,
+      "mean_x_pos": 3161.0,
+      "solved": true
+    }
+  },
+  "ablation/gamma099_seed2": {
+    "total_steps": 3002368,
+    "mean_sps": 124.5,
+    "est_hours": 6.7,
+    "hardware": {
+      "platform": "Kaggle",
+      "cpu_physical": 2,
+      "cpu_logical": 4,
+      "gpu": "Tesla T4",
+      "startedAt": "2026-11-19T14:26:38.495830Z"
+    },
+    "official_eval": {
+      "checkpoint_step": 3002368,
+      "flag_rate": 1.0,
+      "mean_x_pos": 3161.0,
+      "solved": true
+    }
+  },
+  "7-1_stage2_finetune": {
+    "total_steps": 1990656,
+    "cumulative_steps_with_stage1": 9994240,
+    "submitted_checkpoint_cumulative_steps": 9506816,
+    "mean_sps": 183.1,
+    "est_hours": 3.02,
+    "hardware": {
+      "platform": "Google Colab (Drive)",
+      "note": "num_envs=8, num_steps=512, lr=6e-5, ent_coef=0.002, target_kl=0.015"
+    },
+    "transfer_from": "runs/7-1_seed1/checkpoints/step_008003584.pt",
+    "official_eval": {
+      "checkpoint": "runs/7-1_stage2_finetune/checkpoints/step_001503232.pt",
+      "checkpoint_step": 1503232,
+      "flag_rate": 0.8,
+      "mean_x_pos": 2486.85,
+      "solved": true
+    },
+    "multi_seed_check_100eps": {
+      "seeds": [
+        2027,
+        2028,
+        2029,
+        2030,
+        2031
+      ],
+      "flag_rates": [
+        0.75,
+        0.85,
+        0.9,
+        0.9,
+        0.9
+      ],
+      "mean": 0.86,
+      "std": 0.058
+    }
+  }
+}

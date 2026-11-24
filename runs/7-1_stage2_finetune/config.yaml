@@ -1,0 +1,52 @@
+level: 7-1
+seed: 1
+device: auto
+run_dir: /content/drive/MyDrive/mario_ppo_workspace/runs/7-1_stage2_finetune
+resume: null
+init_ckpt: /content/drive/MyDrive/mario_ppo_workspace/runs/7-1_seed1/checkpoints/step_008003584.pt
+torch_threads: 2
+checkpoint_every: 500000
+eval_episodes: 5
+eval_max_steps: 3000
+video: true
+env:
+  actions: simple
+  frame_skip: 4
+  frame_stack: 4
+  size: 84
+  weights:
+  - 1.0
+  - 1.0
+  - 2.0
+  - 0.05
+  - 0.05
+  noop_max: 30
+  normalize_reward: true
+  max_no_progress_steps: 200
+  flag_bonus: 8.0
+  stuck_penalty: 0.0
+model: {}
+algo:
+  num_envs: 8
+  num_steps: 512
+  num_minibatches: 8
+  update_epochs: 4
+  total_steps: 1990000
+  lr: 6.0e-05
+  anneal_lr: true
+  adam_eps: 1.0e-05
+  gamma: 0.95
+  gae_lambda: 0.95
+  clip_coef: 0.2
+  clip_vloss: false
+  norm_adv: true
+  ent_coef: 0.002
+  vf_coef: 0.25
+  max_grad_norm: 0.5
+  target_kl: 0.015
+wandb:
+  enabled: true
+  project: mario-ppo
+  entity: null
+  name: 7-1_stage2_finetune
+  tags: []
